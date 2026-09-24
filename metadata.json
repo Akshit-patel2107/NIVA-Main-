@@ -1,0 +1,6 @@
+{
+  "name": "NIVA - Menstrual Health & Smart Period Care Ecosystem",
+  "description": "NIVA is a premium, privacy-first menstrual wellness companion featuring intelligent cycle tracking, personalized hormonal insights, AI guidance, and wellness analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
