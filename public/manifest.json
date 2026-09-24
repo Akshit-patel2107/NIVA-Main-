@@ -1,0 +1,33 @@
+{
+  "id": "/",
+  "name": "NIVA - Menstrual Health & Wellness",
+  "short_name": "NIVA",
+  "description": "Privacy-first menstrual wellness companion featuring intelligent cycle tracking, personalized hormonal insights, AI guidance, and wellness analytics.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#FFFDFB",
+  "theme_color": "#e11d48",
+  "categories": ["health", "lifestyle", "medical"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

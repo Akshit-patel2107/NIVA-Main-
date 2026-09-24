@@ -22,6 +22,8 @@ import {
   Download,
   AlertTriangle,
   RotateCcw,
+  Smartphone,
+  Copy,
 } from 'lucide-react';
 import { CycleStats, RegularityStatus, UserAccount, UserPreferences } from '../types';
 import { clearAIChatHistory, exportAllData } from '../utils/storage';
@@ -70,6 +72,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [exportedToast, setExportedToast] = useState<boolean>(false);
   const [clearedAIToast, setClearedAIToast] = useState<boolean>(false);
   const [confirmDeleteModal, setConfirmDeleteModal] = useState<boolean>(false);
+  const [apkGuideOpen, setApkGuideOpen] = useState<boolean>(false);
+  const [copiedToast, setCopiedToast] = useState<boolean>(false);
 
   // Policy modal
   const [policyType, setPolicyType] = useState<'privacy' | 'terms' | null>(null);
@@ -517,6 +521,20 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             <ChevronRight className="w-4 h-4 text-stone-400" />
           </button>
 
+          <button
+            onClick={() => setApkGuideOpen(true)}
+            className="flex items-center justify-between p-3.5 rounded-2xl bg-teal-50/70 hover:bg-teal-100/70 border border-teal-200 text-left transition-colors"
+          >
+            <div className="flex items-center space-x-2.5">
+              <Smartphone className="w-4 h-4 text-teal-600" />
+              <div>
+                <span className="font-bold text-teal-900 block">Download APK / Install App</span>
+                <span className="text-[11px] text-teal-700">Android WebAPK & standalone APK</span>
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-teal-400" />
+          </button>
+
           {onRerunOnboarding && (
             <button
               onClick={onRerunOnboarding}
@@ -722,6 +740,120 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 className="px-5 py-2 bg-stone-900 hover:bg-stone-800 text-white rounded-xl text-xs font-semibold"
               >
                 Understood & Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* APK & PWA INSTALL GUIDE MODAL */}
+      {apkGuideOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in"
+        >
+          <div className="bg-white w-full max-w-xl max-h-[88vh] rounded-3xl p-6 border border-stone-200 shadow-2xl flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between pb-3 border-b border-stone-100">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-teal-50 text-teal-600 flex items-center justify-center">
+                  <Smartphone className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-stone-900">
+                    How to Install NIVA & Download APK
+                  </h3>
+                  <p className="text-xs text-stone-500">
+                    Native Android installation options
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setApkGuideOpen(false)}
+                className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-4 py-4 text-xs text-stone-700 leading-relaxed pr-1">
+              {/* Option 1: Instant Native Android WebAPK (Easiest) */}
+              <div className="p-4 rounded-2xl bg-teal-50/70 border border-teal-200 space-y-2">
+                <div className="flex items-center space-x-2">
+                  <span className="w-5 h-5 rounded-full bg-teal-600 text-white font-bold text-[11px] flex items-center justify-center">
+                    1
+                  </span>
+                  <span className="font-bold text-sm text-teal-950">
+                    Method 1: Direct Android Install (WebAPK — Recommended)
+                  </span>
+                </div>
+                <p className="text-teal-900 text-xs">
+                  Android devices automatically compile and install NIVA as a native <strong>WebAPK</strong> without needing manual file downloads:
+                </p>
+                <ol className="list-decimal list-inside space-y-1.5 text-teal-950 pl-1">
+                  <li>Open NIVA in <strong>Chrome</strong> or <strong>Samsung Internet</strong> on your Android phone.</li>
+                  <li>Tap the <strong>three dots menu (⋮)</strong> in the top-right corner.</li>
+                  <li>Tap <strong>"Install app"</strong> or <strong>"Add to Home screen"</strong>.</li>
+                  <li>Android will generate an official app icon in your app drawer that opens in full-screen standalone mode!</li>
+                </ol>
+              </div>
+
+              {/* Option 2: Generate Standalone .APK File */}
+              <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-2">
+                <div className="flex items-center space-x-2">
+                  <span className="w-5 h-5 rounded-full bg-stone-800 text-white font-bold text-[11px] flex items-center justify-center">
+                    2
+                  </span>
+                  <span className="font-bold text-sm text-stone-900">
+                    Method 2: Download Standalone .APK / .AAB File
+                  </span>
+                </div>
+                <p className="text-stone-600 text-xs">
+                  If you need a standalone <code>.apk</code> file to sideload or submit to the Google Play Store:
+                </p>
+                <ol className="list-decimal list-inside space-y-1.5 text-stone-700 pl-1">
+                  <li>
+                    Visit <strong><a href="https://www.pwabuilder.com" target="_blank" rel="noreferrer" className="text-rose-600 underline font-semibold">PWABuilder.com</a></strong> (free official tool by Microsoft).
+                  </li>
+                  <li>Paste your live NIVA web app URL.</li>
+                  <li>Click <strong>"Package for Stores"</strong> and choose <strong>Android</strong>.</li>
+                  <li>Click <strong>Generate APK / AAB</strong> to download your signed APK file directly to your computer or phone!</li>
+                </ol>
+              </div>
+
+              {/* Live URL Helper */}
+              <div className="p-3.5 rounded-2xl bg-purple-50/70 border border-purple-200 space-y-1.5">
+                <span className="text-[11px] font-bold text-purple-900 uppercase tracking-wider block">
+                  Your Live App URL for APK Generation:
+                </span>
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={window.location.origin}
+                    className="flex-1 bg-white border border-purple-200 rounded-xl px-3 py-1.5 text-xs text-stone-800 font-mono select-all"
+                  />
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(window.location.origin);
+                      setCopiedToast(true);
+                      setTimeout(() => setCopiedToast(false), 2500);
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-purple-600 text-white text-xs font-semibold hover:bg-purple-700 flex items-center space-x-1 shrink-0"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>{copiedToast ? 'Copied!' : 'Copy URL'}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-stone-100 flex justify-end">
+              <button
+                onClick={() => setApkGuideOpen(false)}
+                className="px-5 py-2 bg-stone-900 hover:bg-stone-800 text-white rounded-xl text-xs font-semibold"
+              >
+                Close Guide
               </button>
             </div>
           </div>

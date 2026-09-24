@@ -25,6 +25,62 @@ const ai = new GoogleGenAI({
   },
 });
 
+// Robust Gemini generation with automatic retry and model failover
+async function generateWithRetryAndFallback(
+  prompt: string,
+  config?: any
+): Promise<{ text: string; model: string } | null> {
+  if (!process.env.GEMINI_API_KEY) {
+    return null;
+  }
+
+  // Model fallback cascade: start with gemini-3.8-flash, failover to gemini-flash-latest, then gemini-3.1-flash-lite
+  const candidateModels = [
+    'gemini-3.8-flash',
+    'gemini-flash-latest',
+    'gemini-3.1-flash-lite',
+  ];
+
+  for (const model of candidateModels) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const response = await ai.models.generateContent({
+          model,
+          contents: prompt,
+          config,
+        });
+        const text = response.text?.trim();
+        if (text) {
+          return { text, model };
+        }
+      } catch (err: any) {
+        const errMsg = err?.message || String(err);
+        const isTemporary =
+          errMsg.includes('503') ||
+          errMsg.includes('high demand') ||
+          errMsg.includes('429') ||
+          errMsg.includes('UNAVAILABLE') ||
+          errMsg.includes('Resource has been exhausted');
+
+        if (isTemporary) {
+          if (attempt === 0) {
+            // Short backoff before retry
+            await new Promise((resolve) => setTimeout(resolve, 600));
+            continue;
+          }
+          console.warn(`Model ${model} in high demand/unavailable. Cascading to next candidate...`);
+          break;
+        } else {
+          console.warn(`Issue calling ${model}:`, errMsg);
+          break;
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
 // Health check endpoint
 app.get('/api/health', (_req: Request, res: Response) => {
   res.json({
@@ -74,42 +130,37 @@ Respond with valid JSON matching the schema.
 
     if (process.env.GEMINI_API_KEY) {
       try {
-        const response = await ai.models.generateContent({
-          model: 'gemini-3.8-flash',
-          contents: prompt,
-          config: {
-            systemInstruction:
-              'You are a compassionate, medically-informed, supportive women\'s health and hormonal wellness guide for NIVA. Be empowering, clear, never clinical or robotic, and always maintain medical disclaimer standards. Do not mention any commercial products or brands.',
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                hormonalStatus: { type: Type.STRING },
-                energyGuidance: { type: Type.STRING },
-                nutritionFocus: {
-                  type: Type.ARRAY,
-                  items: { type: Type.STRING },
-                },
-                comfortTip: { type: Type.STRING },
-                phaseAffirmation: { type: Type.STRING },
-                disclaimer: { type: Type.STRING },
+        const result = await generateWithRetryAndFallback(prompt, {
+          systemInstruction:
+            'You are a compassionate, medically-informed, supportive women\'s health and hormonal wellness guide for NIVA. Be empowering, clear, never clinical or robotic, and always maintain medical disclaimer standards. Do not mention any commercial products or brands.',
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              hormonalStatus: { type: Type.STRING },
+              energyGuidance: { type: Type.STRING },
+              nutritionFocus: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
               },
-              required: [
-                'hormonalStatus',
-                'energyGuidance',
-                'nutritionFocus',
-                'comfortTip',
-                'phaseAffirmation',
-                'disclaimer',
-              ],
+              comfortTip: { type: Type.STRING },
+              phaseAffirmation: { type: Type.STRING },
+              disclaimer: { type: Type.STRING },
             },
+            required: [
+              'hormonalStatus',
+              'energyGuidance',
+              'nutritionFocus',
+              'comfortTip',
+              'phaseAffirmation',
+              'disclaimer',
+            ],
           },
         });
 
-        const text = response.text?.trim();
-        if (text) {
-          const parsed = JSON.parse(text);
-          return res.json({ success: true, insights: parsed, source: 'gemini-3.8-flash' });
+        if (result?.text) {
+          const parsed = JSON.parse(result.text);
+          return res.json({ success: true, insights: parsed, source: result.model });
         }
       } catch (geminiError) {
         console.warn('Gemini cycle insights temporary issue, falling back to clinical matrix:', geminiError);
@@ -234,28 +285,21 @@ Guidelines:
 
     if (process.env.GEMINI_API_KEY) {
       try {
-        const response = await ai.models.generateContent({
-          model: 'gemini-3.8-flash',
-          contents: prompt,
-          config: {
-            systemInstruction:
-              'You are NIVA\'s empathetic menstrual health specialist. Be gentle, empowering, scientifically accurate, and always prioritize female health safety. Never include commercial or shopping links.',
-          },
+        const result = await generateWithRetryAndFallback(prompt, {
+          systemInstruction:
+            'You are NIVA\'s empathetic menstrual health specialist. Be gentle, empowering, scientifically accurate, and always prioritize female health safety. Never include commercial or shopping links.',
         });
 
-        const reply = response.text?.trim();
-        if (reply) {
-          return res.json({ success: true, answer: reply, source: 'gemini-3.8-flash' });
+        if (result?.text) {
+          return res.json({ success: true, answer: result.text, source: result.model });
         }
       } catch (geminiError) {
         console.warn('Gemini ask-niva temporary issue, using clinical response:', geminiError);
       }
     }
 
-    // High quality clinical fallback
-    return res.json({
-      success: true,
-      answer: `Thank you for checking in with NIVA. Understanding your body's hormonal rhythm is one of the most powerful steps toward lifelong menstrual wellness.
+    // High quality clinical fallback tailored to user query
+    let tailoredAnswer = `Thank you for checking in with NIVA. Understanding your body's hormonal rhythm is one of the most powerful steps toward lifelong menstrual wellness.
 
 Here are key evidence-based recommendations:
 • Stay consistently hydrated with warm fluids and electrolytes; gentle heat therapy increases pelvic circulation and relaxes uterine contractions.
@@ -264,7 +308,44 @@ Here are key evidence-based recommendations:
 
 Important warning signs: If you ever experience sudden, severe debilitating pain, fever, or soak through a pad/tampon every hour for 2 or more consecutive hours, please contact a physician or urgent care immediately.
 
-Reminder: NIVA AI provides general wellness information and does not replace professional medical advice.`,
+Reminder: NIVA AI provides general wellness information and does not replace professional medical advice.`;
+
+    const lowerQ = question.toLowerCase();
+    if (lowerQ.includes('tired') || lowerQ.includes('fatigue')) {
+      tailoredAnswer = `Feeling tired or experiencing fatigue is common across cycle transitions. In the late luteal phase (just before your period), both estrogen and progesterone drop rapidly, which influences serotonin and can make sleep lighter or leave you feeling less energized.
+
+Comforting steps you can take today:
+1. Hydrate with warm water and electrolytes; mild dehydration amplifies biological fatigue.
+2. Nourish with iron-rich foods (spinach, lentils, pumpkin seeds) and magnesium to support cellular energy.
+3. Allow yourself 15–20 minutes of restorative rest or gentle legs-up-the-wall stretching rather than forcing high-intensity workouts.
+
+Warning note: If exhaustion is severe, chronic, or accompanied by extreme dizziness or shortness of breath, please consult a healthcare provider to test ferritin and thyroid levels.
+
+Reminder: NIVA AI provides general wellness information and does not replace professional medical advice.`;
+    } else if (lowerQ.includes('cramp') || lowerQ.includes('pain')) {
+      tailoredAnswer = `Menstrual cramps (dysmenorrhea) are caused by prostaglandins—hormone-like compounds that cause uterine smooth muscles to contract to shed the lining.
+
+Evidence-based relief methods:
+1. Local Heat Therapy: Applying a heat pack or warm hot water bottle (approx 40°C / 104°F) to your lower abdomen or lower back relaxes smooth muscles as effectively as mild analgesics.
+2. Herbal Infusions: Warm fresh ginger or chamomile tea acts as a gentle anti-spasmodic and COX-2 inhibitor.
+3. Gentle Pelvic Movement: Child's pose and slow cat-cow stretching improve pelvic blood flow.
+
+Warning note: If cramps are sudden, debilitating, not relieved by standard over-the-counter care, or prevent daily activities, please consult a gynecologist to rule out conditions like endometriosis or adenomyosis.
+
+Reminder: NIVA AI provides general wellness information and does not replace professional medical advice.`;
+    } else if (lowerQ.includes('phase')) {
+      tailoredAnswer = `Your cycle has four distinct biological phases: Menstrual (shedding & renewal), Follicular (estrogen rise & creative stamina), Ovulation (peak magnetic vitality & LH surge), and Luteal (progesterone rise, inward focus & metabolic shift).
+
+Syncing with your phase:
+• Honor your natural stamina: High-intensity workouts and bold projects harmonize best in follicular and ovulation windows.
+• Protect downtime: Slower movement, complex carbohydrates, and earlier bedtimes harmonize best in luteal and early menstrual days.
+
+Reminder: NIVA AI provides general wellness information and does not replace professional medical advice.`;
+    }
+
+    return res.json({
+      success: true,
+      answer: tailoredAnswer,
       source: 'clinical-matrix',
     });
   } catch (error: any) {
@@ -302,41 +383,36 @@ Generate a JSON response with:
 
     if (process.env.GEMINI_API_KEY) {
       try {
-        const response = await ai.models.generateContent({
-          model: 'gemini-3.8-flash',
-          contents: prompt,
-          config: {
-            systemInstruction:
-              'You are NIVA\'s empathetic women\'s health scientist. Highlight strength, biological rhythm awareness, and clear distinctions between user data and AI interpretation.',
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                overview: { type: Type.STRING },
-                patternObservations: {
-                  type: Type.ARRAY,
-                  items: { type: Type.STRING },
-                },
-                proactiveWellnessTips: {
-                  type: Type.ARRAY,
-                  items: { type: Type.STRING },
-                },
-                disclaimer: { type: Type.STRING },
+        const result = await generateWithRetryAndFallback(prompt, {
+          systemInstruction:
+            'You are NIVA\'s empathetic women\'s health scientist. Highlight strength, biological rhythm awareness, and clear distinctions between user data and AI interpretation.',
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              overview: { type: Type.STRING },
+              patternObservations: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
               },
-              required: [
-                'overview',
-                'patternObservations',
-                'proactiveWellnessTips',
-                'disclaimer',
-              ],
+              proactiveWellnessTips: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+              },
+              disclaimer: { type: Type.STRING },
             },
+            required: [
+              'overview',
+              'patternObservations',
+              'proactiveWellnessTips',
+              'disclaimer',
+            ],
           },
         });
 
-        const text = response.text?.trim();
-        if (text) {
-          const parsed = JSON.parse(text);
-          return res.json({ success: true, report: parsed, source: 'gemini-3.8-flash' });
+        if (result?.text) {
+          const parsed = JSON.parse(result.text);
+          return res.json({ success: true, report: parsed, source: result.model });
         }
       } catch (geminiError) {
         console.warn('Gemini summary insights issue, using clinical pattern report:', geminiError);
