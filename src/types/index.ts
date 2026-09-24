@@ -15,6 +15,7 @@ export interface DailyLog {
   discharge: string;
   notes?: string;
   confirmedPeriod?: boolean; // differentiated from predicted
+  overallWellbeing?: 'Great' | 'Good' | 'Okay' | 'Difficult';
   // Wellness tracking
   waterGlasses: number; // 250ml per glass
   sleepHours: number; // e.g. 7.5
@@ -39,6 +40,31 @@ export interface CycleStats {
   }[];
 }
 
+export interface WomensHealthProfile {
+  completed: boolean;
+  completedAt?: string;
+  lastPeriodStart: string; // YYYY-MM-DD
+  averageCycleLength: number; // 21 - 45
+  averagePeriodLength: number; // 2 - 10
+  regularity: RegularityStatus;
+  commonPhysicalSymptoms?: string[];
+  commonEmotionalSymptoms?: string[];
+  flowIntensity?: string;
+  crampsSeverity?: string;
+  clotting?: string;
+  periodProducts?: string[];
+  primaryGoal?: string;
+  birthControl?: string;
+  healthConditions?: string[];
+  ageBracket?: string;
+}
+
+export interface TrackingPreferences {
+  trackSymptoms: boolean;
+  trackMood: boolean;
+  trackWellness: boolean;
+}
+
 export interface UserAccount {
   id: string;
   name: string;
@@ -51,6 +77,9 @@ export interface UserAccount {
   consentAccepted: boolean;
   createdAt: string;
   isDemoUser?: boolean;
+  healthProfileCompleted?: boolean;
+  onboardingCompleted?: boolean;
+  trackingPreferences?: TrackingPreferences;
 }
 
 export interface NotificationSettings {
@@ -104,7 +133,9 @@ export type NavigationTab =
   | 'home'
   | 'calendar'
   | 'track'
+  | 'wellness'
   | 'insights'
-  | 'profile'
   | 'education'
+  | 'profile'
   | 'emergency';
+

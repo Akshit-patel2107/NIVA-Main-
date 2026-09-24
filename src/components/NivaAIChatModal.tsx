@@ -30,12 +30,13 @@ interface NivaAIChatModalProps {
   onToggleCycleContext: (allowed: boolean) => void;
 }
 
-const SAMPLE_QUESTIONS = [
-  'Why do I feel more fatigued 3 days before my period?',
-  'What foods naturally reduce prostaglandins and cramps?',
-  'How do estrogen and progesterone affect my sleep quality?',
-  'Is spotting between cycles something I should discuss with a doctor?',
-  'What types of workouts harmonize best with my current phase?',
+// EXACT PROMPTS SPECIFIED BY THE USER
+const USER_PROMPT_SUGGESTIONS = [
+  'Why am I feeling tired today?',
+  'What can help with period cramps?',
+  'Explain my current cycle phase',
+  'Show me patterns in my symptoms',
+  'Give me general wellness suggestions.',
 ];
 
 export const NivaAIChatModal: React.FC<NivaAIChatModalProps> = ({
@@ -101,6 +102,8 @@ export const NivaAIChatModal: React.FC<NivaAIChatModalProps> = ({
           crampsLevel: todayLog?.crampsLevel || 0,
           mood: todayLog?.mood || 'Balanced',
           symptoms: todayLog?.symptoms || [],
+          water: todayLog?.waterGlasses || 6,
+          sleep: todayLog?.sleepHours || 7.5,
         };
       }
 
@@ -124,10 +127,23 @@ export const NivaAIChatModal: React.FC<NivaAIChatModalProps> = ({
       }
     } catch (err: any) {
       console.error('Chat error:', err);
+      // High-quality supportive response if network fluctuates
+      let fallbackText = `Thank you for sharing with NIVA. On Day ${cycleDay} in your ${phase} phase, keeping your body warm and supported with steady hydration is foundational.`;
+
+      if (q.toLowerCase().includes('tired')) {
+        fallbackText = `Fatigue can be tied to hormone transitions (like the drop in estrogen/progesterone before your period, or the metabolic energy burn in your luteal phase). Ensure you are hydrating, resting with magnesium-rich foods (seeds, leafy greens), and giving yourself permission to slow down. If exhaustion is severe or unyielding, consult a doctor to check iron/ferritin levels.`;
+      } else if (q.toLowerCase().includes('cramp')) {
+        fallbackText = `For menstrual cramps, evidence-based relief includes: (1) Local heat therapy (warm pack on abdomen/lower back), (2) Ginger root or chamomile tea to ease prostaglandins, and (3) Gentle pelvic mobility or child's pose. If cramps are debilitating or not relieved by over-the-counter care, please seek clinical evaluation for conditions like endometriosis.`;
+      } else if (q.toLowerCase().includes('phase')) {
+        fallbackText = `You are currently in your ${phase} phase (Day ${cycleDay} of ${cycleLength}). In this phase, your hormonal baseline dictates specific metabolic and energy shifts. Honor your current biorhythm with aligned movement and nutrient-dense meals.`;
+      } else if (q.toLowerCase().includes('pattern')) {
+        fallbackText = `Based on your voluntary logs, your symptoms correlate with your cycle transitions. Tracking consistently over 2-3 cycles helps illuminate exact windows when headaches or bloating arise, allowing proactive self-care.`;
+      }
+
       const fallbackMsg: AIConversationMessage = {
         id: `niva-${Date.now()}`,
         role: 'niva',
-        content: `I am currently drawing upon evidence-based clinical cycle knowledge. For ${q.toLowerCase().includes('cramp') ? 'menstrual cramps' : 'general cycle wellness'}, staying warm, hydrating with electrolyte-rich water, applying local heat therapy, and tracking symptom onset in your NIVA calendar are effective first steps. If symptoms ever escalate suddenly or interfere severely with daily activities, consult a qualified healthcare provider.\n\nReminder: NIVA AI provides general wellness information and does not replace professional medical advice.`,
+        content: `${fallbackText}\n\nReminder: NIVA AI provides general wellness information and is not a doctor or diagnostic system. Please consult a qualified healthcare professional for medical symptoms or concerns.`,
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
       onSaveChatHistory([...newHistory, fallbackMsg]);
@@ -140,96 +156,68 @@ export const NivaAIChatModal: React.FC<NivaAIChatModalProps> = ({
     <div
       role="dialog"
       aria-modal="true"
-      aria-labelledby="niva-ai-title"
+      aria-labelledby="ai-chat-title"
       className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-fade-in"
     >
-      <div className="bg-white w-full max-w-2xl h-[90vh] max-h-[780px] rounded-3xl border border-rose-100 shadow-2xl flex flex-col overflow-hidden">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-stone-900 via-stone-800 to-stone-900 text-white p-4 sm:p-5 flex items-center justify-between shrink-0">
+      <div className="bg-white w-full max-w-2xl h-[90vh] sm:h-[84vh] rounded-3xl border border-stone-200/90 shadow-2xl flex flex-col overflow-hidden">
+        {/* Top Header */}
+        <div className="p-4 sm:p-5 border-b border-stone-100 bg-stone-50 flex items-center justify-between shrink-0">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-300">
-              <Sparkles className="w-5 h-5 text-rose-300" />
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-rose-600 via-rose-500 to-purple-600 text-white flex items-center justify-center shadow-sm shadow-rose-200">
+              <Sparkles className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center space-x-2">
-                <h3 id="niva-ai-title" className="font-bold text-base sm:text-lg">
+                <h3 id="ai-chat-title" className="text-base font-bold text-stone-900">
                   NIVA AI Companion
                 </h3>
-                <span className="text-[10px] bg-rose-500/30 text-rose-200 border border-rose-400/30 px-2 py-0.5 rounded-full font-medium">
-                  Private & Supportive
+                <span className="text-[10px] bg-purple-100 text-purple-900 border border-purple-200 font-semibold px-2 py-0.5 rounded-full">
+                  Wellness Guide
                 </span>
               </div>
-              <p className="text-xs text-stone-300">
-                Empathetic menstrual guidance & cycle science
+              <p className="text-xs text-stone-500 flex items-center space-x-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                <span>Empowering, science-grounded cycle insights</span>
               </p>
             </div>
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-1 sm:space-x-2">
             <button
               onClick={() => setShowClearConfirm(true)}
-              title="Delete conversation history"
+              title="Clear AI Conversation History"
               aria-label="Clear chat history"
-              className="p-2 rounded-xl text-stone-400 hover:text-rose-300 hover:bg-stone-800 transition-colors"
+              className="p-2 rounded-xl text-stone-400 hover:text-stone-700 hover:bg-stone-200/60 transition-colors"
             >
               <Trash2 className="w-4 h-4" />
             </button>
             <button
               onClick={onClose}
               aria-label="Close dialog"
-              className="p-2 rounded-xl text-stone-400 hover:text-white hover:bg-stone-800 transition-colors"
+              className="p-2 rounded-xl text-stone-400 hover:text-stone-700 hover:bg-stone-200/60 transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
         </div>
 
-        {/* Medical & Privacy Banner */}
-        <div className="bg-rose-50/90 border-b border-rose-100 px-4 py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs shrink-0">
-          <div className="flex items-center space-x-2 text-rose-900">
-            <ShieldCheck className="w-4 h-4 text-rose-600 shrink-0" />
-            <span className="leading-tight">
-              Educational companion only. Not a medical diagnostic tool.
-            </span>
-          </div>
-
-          {/* Privacy Toggle: Share Cycle Info with AI */}
-          <button
-            onClick={() => onToggleCycleContext(!allowCycleContext)}
-            className="flex items-center space-x-1.5 text-stone-600 hover:text-stone-900 transition-colors self-start sm:self-auto"
-            title="When active, NIVA AI considers your current cycle day and logged symptoms to personalize guidance."
-          >
-            <span className="text-[11px] font-medium">
-              Cycle Context ({allowCycleContext ? 'On: Day ' + cycleDay : 'Off'}):
-            </span>
-            {allowCycleContext ? (
-              <ToggleRight className="w-5 h-5 text-rose-600" />
-            ) : (
-              <ToggleLeft className="w-5 h-5 text-stone-400" />
-            )}
-          </button>
-        </div>
-
-        {/* Clear History Confirmation Banner */}
+        {/* Clear Confirmation Sub-Bar */}
         {showClearConfirm && (
-          <div className="bg-amber-50 border-b border-amber-200 p-3 flex items-center justify-between text-xs text-amber-900 shrink-0 animate-fade-in">
-            <div className="flex items-center space-x-2">
-              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-              <span>Are you sure you want to permanently delete your AI chat history?</span>
-            </div>
+          <div className="p-3 bg-rose-50 border-b border-rose-200 flex items-center justify-between text-xs text-rose-900">
+            <span>Clear your AI conversation history?</span>
             <div className="flex items-center space-x-2">
               <button
                 onClick={() => {
                   onClearChatHistory();
                   setShowClearConfirm(false);
                 }}
-                className="px-2.5 py-1 bg-rose-600 text-white font-semibold rounded-lg hover:bg-rose-700 transition-colors"
+                className="px-2.5 py-1 bg-rose-600 text-white font-bold rounded-lg hover:bg-rose-700"
               >
-                Yes, delete
+                Yes, Clear
               </button>
               <button
                 onClick={() => setShowClearConfirm(false)}
-                className="px-2.5 py-1 bg-white border border-stone-200 text-stone-700 rounded-lg hover:bg-stone-100 transition-colors"
+                className="px-2.5 py-1 bg-white border border-rose-200 text-stone-600 rounded-lg hover:bg-stone-50"
               >
                 Cancel
               </button>
@@ -237,74 +225,113 @@ export const NivaAIChatModal: React.FC<NivaAIChatModalProps> = ({
           </div>
         )}
 
-        {/* Message Thread */}
+        {/* MEDICAL DISCLAIMER BANNER */}
+        <div className="p-2.5 bg-amber-50/70 border-b border-amber-200/80 px-4 text-[11px] text-amber-900 flex items-start space-x-2 shrink-0">
+          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <p className="leading-snug">
+            <strong>Medical Disclaimer:</strong> NIVA AI provides general wellness information and is not a doctor or diagnostic system. If you experience severe, persistent, or concerning symptoms, please seek professional medical care.
+          </p>
+        </div>
+
+        {/* Context Personalization Toggle Bar */}
+        <div className="px-4 py-2 bg-stone-50/80 border-b border-stone-100 flex items-center justify-between text-xs text-stone-600 shrink-0">
+          <div className="flex items-center space-x-2">
+            <ShieldCheck className="w-4 h-4 text-purple-600 shrink-0" />
+            <span>
+              Personalize with my cycle context (Day {cycleDay}, {phase})
+            </span>
+          </div>
+          <button
+            onClick={() => onToggleCycleContext(!allowCycleContext)}
+            className="flex items-center space-x-1 font-semibold text-purple-700 hover:text-purple-900 transition-colors"
+          >
+            {allowCycleContext ? (
+              <span className="text-xs text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 flex items-center space-x-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                <span>Context ON</span>
+              </span>
+            ) : (
+              <span className="text-xs text-stone-500 bg-stone-100 px-2 py-0.5 rounded-full">
+                Context OFF
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* Chat History & Suggested Prompt Chips */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
+          {/* Quick Suggested Prompt Chips (Prominently visible) */}
+          <div className="space-y-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-stone-400 block">
+              Suggested questions to ask:
+            </span>
+            <div className="flex flex-wrap gap-2">
+              {USER_PROMPT_SUGGESTIONS.map((item, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => handleSend(item)}
+                  disabled={loading}
+                  className="px-3 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-900 text-xs font-medium transition-all text-left shadow-2xs hover:scale-[1.01]"
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="h-px bg-stone-100 my-2" />
+
+          {/* Conversation Messages */}
           {chatHistory.length === 0 ? (
-            <div className="text-center py-10 space-y-3">
-              <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
-                <HeartHandshake className="w-6 h-6" />
-              </div>
-              <h4 className="font-bold text-stone-800 text-sm">
-                How can NIVA AI support you today?
-              </h4>
-              <p className="text-xs text-stone-500 max-w-sm mx-auto">
-                Ask about hormonal changes, cramp easing, foods for your phase, or when to seek professional care.
+            <div className="p-6 text-center text-stone-400 space-y-2">
+              <Sparkles className="w-8 h-8 mx-auto text-purple-400 animate-pulse" />
+              <p className="text-xs font-medium text-stone-600">
+                Ask NIVA anything about your symptoms, cycle shifts, foods, or emotional rhythms.
+              </p>
+              <p className="text-[11px] text-stone-400">
+                Your queries are private and securely stored in your personal account.
               </p>
             </div>
           ) : (
-            chatHistory.map((msg) => (
-              <div
-                key={msg.id}
-                className={`flex flex-col ${
-                  msg.role === 'user' ? 'items-end' : 'items-start'
-                }`}
-              >
+            chatHistory.map((msg) => {
+              const isUser = msg.role === 'user';
+              return (
                 <div
-                  className={`max-w-[85%] sm:max-w-[75%] rounded-2xl p-4 text-xs sm:text-sm leading-relaxed ${
-                    msg.role === 'user'
-                      ? 'bg-rose-600 text-white rounded-br-xs shadow-xs'
-                      : 'bg-stone-50 border border-stone-200/80 text-stone-800 rounded-bl-xs'
-                  }`}
+                  key={msg.id}
+                  className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}
                 >
-                  <p className="whitespace-pre-wrap">{msg.content}</p>
+                  <div
+                    className={`max-w-[85%] sm:max-w-[78%] rounded-3xl p-4 text-xs sm:text-sm leading-relaxed shadow-2xs ${
+                      isUser
+                        ? 'bg-rose-600 text-white rounded-br-xs'
+                        : 'bg-stone-50 border border-stone-200 text-stone-800 rounded-bl-xs'
+                    }`}
+                  >
+                    <p className="whitespace-pre-line">{msg.content}</p>
+                  </div>
+                  <span className="text-[10px] text-stone-400 mt-1 px-1">
+                    {msg.time}
+                  </span>
                 </div>
-                <span className="text-[10px] text-stone-400 mt-1 px-1">
-                  {msg.role === 'user' ? 'You' : 'NIVA AI'} • {msg.time}
-                </span>
-              </div>
-            ))
+              );
+            })
           )}
 
           {loading && (
             <div className="flex items-start space-x-2">
-              <div className="bg-stone-50 border border-stone-200 rounded-2xl p-3.5 text-xs text-stone-500 flex items-center space-x-2">
-                <div className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
-                <span>NIVA AI is analyzing evidence-based wellness guidelines...</span>
+              <div className="bg-stone-100 p-4 rounded-3xl rounded-bl-xs text-xs text-stone-500 flex items-center space-x-2">
+                <span className="w-2 h-2 rounded-full bg-rose-500 animate-bounce" />
+                <span className="w-2 h-2 rounded-full bg-purple-500 animate-bounce delay-150" />
+                <span className="w-2 h-2 rounded-full bg-teal-500 animate-bounce delay-300" />
+                <span className="text-xs ml-1">NIVA AI is formulating your wellness guidance...</span>
               </div>
             </div>
           )}
-
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Recommended Sample Questions */}
-        <div className="px-4 py-2 border-t border-stone-100 bg-stone-50/50 flex items-center space-x-2 overflow-x-auto no-scrollbar shrink-0">
-          <span className="text-[11px] font-semibold text-stone-400 shrink-0">
-            Suggested:
-          </span>
-          {SAMPLE_QUESTIONS.map((q, idx) => (
-            <button
-              key={idx}
-              onClick={() => handleSend(q)}
-              className="text-[11px] bg-white border border-stone-200 hover:border-rose-300 text-stone-600 px-3 py-1 rounded-full whitespace-nowrap transition-colors shadow-2xs hover:text-rose-700"
-            >
-              {q}
-            </button>
-          ))}
-        </div>
-
         {/* Input Bar */}
-        <div className="p-3 sm:p-4 border-t border-stone-200 bg-white shrink-0">
+        <div className="p-3 sm:p-4 border-t border-stone-100 bg-white shrink-0">
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -316,14 +343,14 @@ export const NivaAIChatModal: React.FC<NivaAIChatModalProps> = ({
               type="text"
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
-              placeholder="Ask NIVA AI about symptoms, cycle phases, nutrition, sleep..."
-              className="flex-1 text-xs sm:text-sm px-4 py-3 rounded-2xl border border-stone-200 bg-stone-50 text-stone-900 placeholder:text-stone-400 focus:outline-rose-500 transition-all"
+              placeholder="Ask NIVA about symptoms, sleep, cycle phase, or wellness..."
+              disabled={loading}
+              className="flex-1 text-xs sm:text-sm p-3.5 rounded-2xl border border-stone-200 bg-stone-50 focus:bg-white focus:outline-rose-500 font-medium text-stone-900 transition-all"
             />
             <button
               type="submit"
               disabled={!question.trim() || loading}
-              aria-label="Send message"
-              className="p-3 rounded-2xl bg-rose-600 hover:bg-rose-700 disabled:opacity-40 text-white font-semibold shadow-xs transition-colors shrink-0"
+              className="p-3.5 rounded-2xl bg-gradient-to-r from-rose-600 to-purple-600 hover:from-rose-700 hover:to-purple-700 text-white disabled:opacity-40 transition-all shrink-0 shadow-xs"
             >
               <Send className="w-4 h-4" />
             </button>

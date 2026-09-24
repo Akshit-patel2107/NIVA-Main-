@@ -1,5 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import {
+  auth,
+  signOut,
+  onAuthStateChanged,
+  FirebaseUser,
+} from './firebase';
+import {
+  getOrCreateUserProfile,
+  saveUserProfileToFirestore,
+  saveDailyLogToFirestore,
+  deleteDailyLogFromFirestore,
+  subscribeToDailyLogs,
+  saveChatHistoryToFirestore,
+  loadChatHistoryFromFirestore,
+  wipeUserFirestoreData,
+} from './services/userService';
+import {
   loadAccount,
   saveAccount,
   loadPreferences,
@@ -12,8 +28,11 @@ import {
   saveAIChatHistory,
   clearAIChatHistory,
   clearAllLocalData,
-  initializeEmptyAccount,
-  resetToDemoData,
+  defaultAccount,
+  defaultPreferences,
+  defaultStats,
+  defaultLogs,
+  defaultAIChatHistory,
 } from './utils/storage';
 import {
   AIConversationMessage,
@@ -34,6 +53,7 @@ import { TrackView } from './components/TrackView';
 import { InsightsView } from './components/InsightsView';
 import { ProfileView } from './components/ProfileView';
 import { CycleAcademy } from './components/CycleAcademy';
+import { WellnessView } from './components/WellnessView';
 import { DailyLogModal } from './components/DailyLogModal';
 import { NivaAIChatModal } from './components/NivaAIChatModal';
 import { EmergencyHelpModal } from './components/EmergencyHelpModal';
@@ -42,15 +62,20 @@ import { PinLockScreen } from './components/PinLockScreen';
 import { AuthModal } from './components/AuthModal';
 import { OnboardingModal } from './components/OnboardingModal';
 import { LandingPage } from './components/LandingPage';
-import { Sparkles, ShieldCheck, UserPlus, Info } from 'lucide-react';
+import { Sparkles, ShieldCheck, Heart } from 'lucide-react';
 
 export default function App() {
-  const [account, setAccount] = useState<UserAccount>(loadAccount);
-  const [preferences, setPreferences] = useState<UserPreferences>(loadPreferences);
-  const [stats, setStats] = useState<CycleStats>(loadCycleStats);
-  const [logs, setLogs] = useState<Record<string, DailyLog>>(loadDailyLogs);
-  const [chatHistory, setChatHistory] = useState<AIConversationMessage[]>(loadAIChatHistory);
+  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+  const [authChecking, setAuthChecking] = useState<boolean>(true);
 
+  // User state
+  const [account, setAccount] = useState<UserAccount>(defaultAccount);
+  const [preferences, setPreferences] = useState<UserPreferences>(defaultPreferences);
+  const [stats, setStats] = useState<CycleStats>(defaultStats);
+  const [logs, setLogs] = useState<Record<string, DailyLog>>(defaultLogs);
+  const [chatHistory, setChatHistory] = useState<AIConversationMessage[]>(defaultAIChatHistory);
+
+  // App navigation state
   const [currentTab, setCurrentTab] = useState<NavigationTab>('home');
   const [selectedDate, setSelectedDate] = useState<string>(() => formatDate(new Date()));
   const [isLandingView, setIsLandingView] = useState<boolean>(false);
@@ -58,32 +83,67 @@ export default function App() {
   // Modals
   const [logModalOpen, setLogModalOpen] = useState<boolean>(false);
   const [aiModalOpen, setAiModalOpen] = useState<boolean>(false);
-  const [authModalOpen, setAuthModalOpen] = useState<boolean>(false);
   const [onboardingOpen, setOnboardingOpen] = useState<boolean>(false);
   const [emergencyModalOpen, setEmergencyModalOpen] = useState<boolean>(false);
   const [privacyCenterOpen, setPrivacyCenterOpen] = useState<boolean>(false);
 
-  // Sync state to local storage on changes
+  // Listen for Firebase Auth state changes
   useEffect(() => {
-    saveAccount(account);
-  }, [account]);
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        setCurrentUser(firebaseUser);
+        const { profileExists, data } = await getOrCreateUserProfile(
+          firebaseUser.uid,
+          firebaseUser.email || '',
+          firebaseUser.displayName
+        );
 
+        if (data.account) {
+          setAccount(data.account as UserAccount);
+          saveAccount(data.account as UserAccount);
+        }
+        if (data.stats) {
+          setStats(data.stats as CycleStats);
+          saveCycleStats(data.stats as CycleStats, firebaseUser.uid);
+        }
+        if (data.preferences) {
+          setPreferences(data.preferences as UserPreferences);
+          savePreferences(data.preferences as UserPreferences, firebaseUser.uid);
+        }
+
+        // Load historical chat from Firestore
+        const remoteChats = await loadChatHistoryFromFirestore(firebaseUser.uid);
+        if (remoteChats && remoteChats.length > 0) {
+          setChatHistory(remoteChats);
+          saveAIChatHistory(remoteChats, firebaseUser.uid);
+        }
+
+        // If newly registered or onboarding not completed, open onboarding questionnaire
+        if (!profileExists || !data.account?.onboardingCompleted) {
+          setOnboardingOpen(true);
+        }
+      } else {
+        setCurrentUser(null);
+        setAccount(defaultAccount);
+        setLogs({});
+      }
+      setAuthChecking(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Listen for real-time daily logs in Firestore when user is logged in
   useEffect(() => {
-    savePreferences(preferences);
-  }, [preferences]);
+    if (!currentUser) return;
+    const unsubLogs = subscribeToDailyLogs(currentUser.uid, (remoteLogs) => {
+      setLogs(remoteLogs);
+      saveDailyLogs(remoteLogs, currentUser.uid);
+    });
+    return () => unsubLogs();
+  }, [currentUser]);
 
-  useEffect(() => {
-    saveCycleStats(stats);
-  }, [stats]);
-
-  useEffect(() => {
-    saveDailyLogs(logs);
-  }, [logs]);
-
-  useEffect(() => {
-    saveAIChatHistory(chatHistory);
-  }, [chatHistory]);
-
+  // Cycle calculation relative to today
   const todayStr = formatDate(new Date());
   const cycleStatus = computeCycleStatus(
     stats.lastPeriodStart,
@@ -92,32 +152,43 @@ export default function App() {
     todayStr
   );
 
+  // Handlers for updating user data
   const handleUpdatePreferences = (updates: Partial<UserPreferences>) => {
-    setPreferences((prev) => ({ ...prev, ...updates }));
+    const newPrefs = { ...preferences, ...updates };
+    setPreferences(newPrefs);
+    if (currentUser) {
+      savePreferences(newPrefs, currentUser.uid);
+      saveUserProfileToFirestore(currentUser.uid, account, stats, newPrefs);
+    }
   };
 
   const handleUpdateAccount = (updates: Partial<UserAccount>) => {
-    setAccount((prev) => ({ ...prev, ...updates }));
+    const newAcc = { ...account, ...updates };
+    setAccount(newAcc);
+    if (currentUser) {
+      saveAccount(newAcc);
+      saveUserProfileToFirestore(currentUser.uid, newAcc, stats, preferences);
+    }
   };
 
   const handleUpdateStats = (updates: Partial<CycleStats>) => {
-    setStats((prev) => ({ ...prev, ...updates }));
+    const newStats = { ...stats, ...updates };
+    setStats(newStats);
+    if (currentUser) {
+      saveCycleStats(newStats, currentUser.uid);
+      saveUserProfileToFirestore(currentUser.uid, account, newStats, preferences);
+    }
   };
 
   const handleSaveDailyLog = (log: DailyLog) => {
-    setLogs((prev) => {
-      const updated = {
-        ...prev,
-        [log.date]: log,
-      };
+    setLogs((prev) => ({
+      ...prev,
+      [log.date]: log,
+    }));
 
-      // If marked as period start, recalculate stats
-      if (log.flow && log.flow !== 'None' && log.confirmedPeriod) {
-        // Can optionally auto-adjust lastPeriodStart if within reasonable window
-      }
-
-      return updated;
-    });
+    if (currentUser) {
+      saveDailyLogToFirestore(currentUser.uid, log);
+    }
   };
 
   const handleDeleteDailyLog = (dateStr: string) => {
@@ -126,36 +197,86 @@ export default function App() {
       delete next[dateStr];
       return next;
     });
+
+    if (currentUser) {
+      deleteDailyLogFromFirestore(currentUser.uid, dateStr);
+    }
   };
 
-  const handleWipeAllData = () => {
-    clearAllLocalData();
-    const cleanAccount: UserAccount = {
-      id: `usr-${Date.now()}`,
-      name: 'User',
-      email: '',
-      ageRange: '26 - 32',
-      isPrivateProfile: true,
-      allowAIContext: false,
-      emailVerified: false,
-      isAuthenticated: false,
-      consentAccepted: false,
-      createdAt: formatDate(new Date()),
-      isDemoUser: false,
-    };
-    setAccount(cleanAccount);
-    setLogs({});
+  const handleSaveChatHistory = (newHistory: AIConversationMessage[]) => {
+    setChatHistory(newHistory);
+    if (currentUser) {
+      saveChatHistoryToFirestore(currentUser.uid, newHistory);
+    }
+  };
+
+  const handleClearChatHistory = () => {
     setChatHistory([]);
+    if (currentUser) {
+      clearAIChatHistory(currentUser.uid);
+      saveChatHistoryToFirestore(currentUser.uid, []);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      setCurrentUser(null);
+      setAccount(defaultAccount);
+      setLogs({});
+      setIsLandingView(false);
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
+  };
+
+  const handleWipeAllData = async () => {
+    if (currentUser) {
+      await wipeUserFirestoreData(currentUser.uid);
+      clearAllLocalData(currentUser.uid);
+    }
+    await signOut(auth);
     setPrivacyCenterOpen(false);
-    setIsLandingView(true);
+    setCurrentUser(null);
+    setAccount(defaultAccount);
+    setLogs({});
   };
 
-  const handleLogout = () => {
-    setAccount((prev) => ({ ...prev, isAuthenticated: false }));
-    setIsLandingView(true);
+  const handleOnboardingComplete = async (data: {
+    name: string;
+    ageRange: string;
+    lastPeriod: string;
+    cycleLength: number;
+    periodDuration: number;
+    regularity: any;
+    trackingPreferences: any;
+  }) => {
+    const updatedAccount: UserAccount = {
+      ...account,
+      name: data.name || account.name,
+      ageRange: data.ageRange || account.ageRange,
+      onboardingCompleted: true,
+      trackingPreferences: data.trackingPreferences,
+    };
+    setAccount(updatedAccount);
+
+    const newStats: CycleStats = {
+      ...stats,
+      lastPeriodStart: data.lastPeriod,
+      averageCycleLength: data.cycleLength,
+      averagePeriodLength: data.periodDuration,
+      regularity: data.regularity,
+    };
+    setStats(newStats);
+
+    if (currentUser) {
+      saveAccount(updatedAccount);
+      saveCycleStats(newStats, currentUser.uid);
+      await saveUserProfileToFirestore(currentUser.uid, updatedAccount, newStats, preferences);
+    }
   };
 
-  const handleLoginSuccess = (
+  const handleLoginSuccess = async (
     acc: Partial<UserAccount>,
     cycleData?: { cycleLength: number; periodDuration: number; lastPeriod: string }
   ) => {
@@ -167,34 +288,50 @@ export default function App() {
     setAccount(updatedAccount);
 
     if (cycleData) {
-      setStats((prev) => ({
-        ...prev,
+      const newStats: CycleStats = {
+        ...stats,
         averageCycleLength: cycleData.cycleLength,
         averagePeriodLength: cycleData.periodDuration,
         lastPeriodStart: cycleData.lastPeriod,
-      }));
+      };
+      setStats(newStats);
+      if (acc.id) {
+        saveCycleStats(newStats, acc.id);
+        await saveUserProfileToFirestore(acc.id, updatedAccount, newStats, preferences);
+      }
     }
-
-    setIsLandingView(false);
   };
 
-  const handleOnboardingComplete = (data: {
-    lastPeriod: string;
-    cycleLength: number;
-    periodDuration: number;
-    regularity: any;
-    commonSymptoms: string[];
-  }) => {
-    setStats((prev) => ({
-      ...prev,
-      lastPeriodStart: data.lastPeriod,
-      averageCycleLength: data.cycleLength,
-      averagePeriodLength: data.periodDuration,
-      regularity: data.regularity,
-    }));
-  };
+  // Loading Screen while Firebase checks authentication state
+  if (authChecking) {
+    return (
+      <div className="min-h-screen bg-[#FFFDFB] flex flex-col items-center justify-center p-4">
+        <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-rose-500 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-rose-200 animate-pulse mb-4">
+          <span className="font-serif-accent font-black text-2xl">N</span>
+        </div>
+        <h2 className="font-serif-accent font-bold text-stone-900 text-lg">
+          NIVA
+        </h2>
+        <p className="text-xs text-stone-500 mt-1 flex items-center space-x-1.5">
+          <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+          <span>Securing your private menstrual wellness session...</span>
+        </p>
+      </div>
+    );
+  }
 
-  // If PIN lock is active, show the lock screen
+  // COMPULSORY LOGIN GATE: User MUST sign in with Google / Gmail to access the app
+  if (!currentUser) {
+    return (
+      <AuthModal
+        isOpen={true}
+        isCompulsoryGate={true}
+        onLoginSuccess={handleLoginSuccess}
+      />
+    );
+  }
+
+  // If user enabled PIN lock and app is locked
   if (preferences.pinLockEnabled && preferences.isLocked) {
     return (
       <PinLockScreen
@@ -205,28 +342,14 @@ export default function App() {
     );
   }
 
-  // If user requested Landing Website view
+  // Optional Landing Page preview for logged-in user if opened from header
   if (isLandingView) {
     return (
-      <>
-        <LandingPage
-          onGetStarted={() => {
-            setAuthModalOpen(true);
-          }}
-          onOpenLogin={() => {
-            setAuthModalOpen(true);
-          }}
-          onOpenAppDirectly={() => {
-            setIsLandingView(false);
-          }}
-        />
-
-        <AuthModal
-          isOpen={authModalOpen}
-          onClose={() => setAuthModalOpen(false)}
-          onLoginSuccess={handleLoginSuccess}
-        />
-      </>
+      <LandingPage
+        onGetStarted={() => setIsLandingView(false)}
+        onOpenLogin={() => setIsLandingView(false)}
+        onOpenAppDirectly={() => setIsLandingView(false)}
+      />
     );
   }
 
@@ -236,34 +359,7 @@ export default function App() {
         preferences.appearance.highContrast ? 'contrast-125' : ''
       }`}
     >
-      {/* Top Demo Notification Banner (if viewing sample profile) */}
-      {account.isDemoUser && (
-        <div className="bg-gradient-to-r from-rose-50 via-purple-50 to-rose-50 border-b border-rose-200/80 px-4 py-2 text-xs text-rose-950 flex flex-wrap items-center justify-between gap-2 shadow-2xs">
-          <div className="flex items-center space-x-2">
-            <Sparkles className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-            <span>
-              <strong>Sample Profile Active:</strong> Viewing realistic menstrual data for Maya (Cycle Day {cycleStatus.cycleDay}).
-            </span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={() => setAuthModalOpen(true)}
-              className="font-bold underline text-rose-700 hover:text-rose-800"
-            >
-              Create Account
-            </button>
-            <span className="text-stone-300">•</span>
-            <button
-              onClick={() => setIsLandingView(true)}
-              className="text-stone-600 hover:text-stone-900 font-medium"
-            >
-              View Landing Page
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Main Top Header */}
+      {/* Top Header */}
       <Header
         currentTab={currentTab}
         onSelectTab={setCurrentTab}
@@ -276,7 +372,7 @@ export default function App() {
         onOpenAI={() => setAiModalOpen(true)}
       />
 
-      {/* Main App Container */}
+      {/* Main App Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
         {/* TAB 1: Home Dashboard */}
         {currentTab === 'home' && (
@@ -311,7 +407,7 @@ export default function App() {
           />
         )}
 
-        {/* TAB 3: Track Symptoms, Mood & Daily Wellness */}
+        {/* TAB 3: Track Symptoms, Mood & Body */}
         {currentTab === 'track' && (
           <TrackView
             logs={logs}
@@ -319,6 +415,17 @@ export default function App() {
             preferences={preferences}
             selectedDate={selectedDate}
             onSelectDate={setSelectedDate}
+          />
+        )}
+
+        {/* TAB: Wellness Goals & Tracking */}
+        {currentTab === 'wellness' && (
+          <WellnessView
+            logs={logs}
+            todayLog={logs[todayStr]}
+            onSaveLog={handleSaveDailyLog}
+            preferences={preferences}
+            onOpenAI={() => setAiModalOpen(true)}
           />
         )}
 
@@ -344,14 +451,17 @@ export default function App() {
             onOpenPrivacyCenter={() => setPrivacyCenterOpen(true)}
             onOpenLandingPage={() => setIsLandingView(true)}
             onLogout={handleLogout}
+            onRerunOnboarding={() => setOnboardingOpen(true)}
+            onClearAIHistory={handleClearChatHistory}
+            onDeleteAccount={handleWipeAllData}
           />
         )}
 
-        {/* Supplementary View: Education Hub */}
+        {/* TAB: Education Hub */}
         {currentTab === 'education' && <CycleAcademy />}
       </main>
 
-      {/* Bottom Navigation Bar & Floating NIVA AI FAB */}
+      {/* Bottom Navigation Bar & Floating NIVA AI Button */}
       <BottomNav
         currentTab={currentTab}
         onSelectTab={setCurrentTab}
@@ -377,11 +487,8 @@ export default function App() {
         todayLog={logs[todayStr]}
         stats={stats}
         chatHistory={chatHistory}
-        onSaveChatHistory={setChatHistory}
-        onClearChatHistory={() => {
-          clearAIChatHistory();
-          setChatHistory([]);
-        }}
+        onSaveChatHistory={handleSaveChatHistory}
+        onClearChatHistory={handleClearChatHistory}
         allowCycleContext={account.allowAIContext}
         onToggleCycleContext={(allowed) => handleUpdateAccount({ allowAIContext: allowed })}
       />
@@ -403,12 +510,6 @@ export default function App() {
         onUpdatePreferences={handleUpdatePreferences}
         logsCount={Object.keys(logs).length}
         onWipeAllData={handleWipeAllData}
-      />
-
-      <AuthModal
-        isOpen={authModalOpen}
-        onClose={() => setAuthModalOpen(false)}
-        onLoginSuccess={handleLoginSuccess}
       />
 
       <OnboardingModal

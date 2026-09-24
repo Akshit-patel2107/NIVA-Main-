@@ -1,0 +1,57 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User account and menstrual cycle settings",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "ageRange": { "type": "string" },
+        "isPrivateProfile": { "type": "boolean" },
+        "allowAIContext": { "type": "boolean" },
+        "averageCycleLength": { "type": "number" },
+        "averagePeriodLength": { "type": "number" },
+        "regularity": { "type": "string" },
+        "lastPeriodStart": { "type": "string" },
+        "healthProfile": { "type": "object" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "email"]
+    },
+    "DailyLog": {
+      "title": "Daily Menstrual and Wellness Log",
+      "description": "Daily symptoms, flow, mood, and wellness indicators for a specific date",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string" },
+        "flow": { "type": "string" },
+        "crampsLevel": { "type": "number" },
+        "mood": { "type": "string" },
+        "symptoms": { "type": "array" },
+        "discharge": { "type": "string" },
+        "notes": { "type": "string" },
+        "confirmedPeriod": { "type": "boolean" },
+        "waterGlasses": { "type": "number" },
+        "sleepHours": { "type": "number" },
+        "sleepQuality": { "type": "string" },
+        "stressLevel": { "type": "number" },
+        "energyLevel": { "type": "number" },
+        "exerciseMinutes": { "type": "number" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["date"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profile and cycle configuration"
+    },
+    "/users/{userId}/dailyLogs/{date}": {
+      "schema": { "$ref": "#/entities/DailyLog" },
+      "description": "Daily logs for the specific user and date"
+    }
+  }
+}

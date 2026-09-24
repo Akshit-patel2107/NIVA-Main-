@@ -192,28 +192,33 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
           </div>
         </div>
 
-        {/* Legend */}
-        <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-xs bg-stone-50/80 p-3 rounded-2xl border border-stone-100">
-          <div className="flex items-center space-x-1.5">
-            <span className="w-3 h-3 rounded-full bg-rose-600 shadow-xs" />
-            <span className="text-stone-700 font-medium">Logged Period</span>
+        {/* Legend & Prediction Clarification */}
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-xs bg-stone-50/80 p-3 rounded-2xl border border-stone-100">
+            <div className="flex items-center space-x-1.5">
+              <span className="w-3 h-3 rounded-full bg-rose-600 shadow-xs" />
+              <span className="text-stone-700 font-medium">Logged Period</span>
+            </div>
+            <div className="flex items-center space-x-1.5">
+              <span className="w-3 h-3 rounded-full border-2 border-dashed border-rose-400 bg-rose-50" />
+              <span className="text-stone-700 font-medium">Predicted Period (Estimate)</span>
+            </div>
+            <div className="flex items-center space-x-1.5">
+              <span className="w-3 h-3 rounded-full bg-purple-200 border border-purple-300" />
+              <span className="text-stone-700 font-medium">Fertile Window</span>
+            </div>
+            <div className="flex items-center space-x-1.5">
+              <span className="w-3 h-3 rounded-full bg-purple-600" />
+              <span className="text-stone-700 font-medium">Peak Ovulation</span>
+            </div>
+            <div className="flex items-center space-x-1.5">
+              <span className="w-2 h-2 rounded-full bg-teal-500" />
+              <span className="text-stone-500">Logged Symptoms</span>
+            </div>
           </div>
-          <div className="flex items-center space-x-1.5">
-            <span className="w-3 h-3 rounded-full border-2 border-dashed border-rose-400 bg-rose-50" />
-            <span className="text-stone-700 font-medium">Predicted Period</span>
-          </div>
-          <div className="flex items-center space-x-1.5">
-            <span className="w-3 h-3 rounded-full bg-purple-200 border border-purple-300" />
-            <span className="text-stone-700 font-medium">Fertile Window</span>
-          </div>
-          <div className="flex items-center space-x-1.5">
-            <span className="w-3 h-3 rounded-full bg-purple-600" />
-            <span className="text-stone-700 font-medium">Peak Ovulation</span>
-          </div>
-          <div className="flex items-center space-x-1.5">
-            <span className="w-2 h-2 rounded-full bg-teal-500" />
-            <span className="text-stone-500">Logged Symptoms</span>
-          </div>
+          <p className="text-[11px] text-stone-400 px-2 italic">
+            * Note: Predictions are voluntary estimates based on your average cycle duration, not guaranteed medical or contraceptive dates.
+          </p>
         </div>
 
         {/* Days of Week Header */}
@@ -429,6 +434,53 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
             </button>
           </div>
         )}
+      </div>
+
+      {/* Historical Cycle Averages & Pattern Insights */}
+      <div className="bg-white rounded-3xl p-6 border border-stone-200/80 shadow-2xs space-y-4">
+        <div className="flex items-center space-x-2">
+          <CalendarIcon className="w-4 h-4 text-purple-600" />
+          <h3 className="text-sm font-bold text-stone-900">
+            Historical Cycle Averages & Patterns
+          </h3>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="bg-stone-50 p-4 rounded-2xl border border-stone-100 space-y-1">
+            <span className="text-[10px] uppercase font-bold text-stone-400 block">
+              Average Cycle Length
+            </span>
+            <span className="text-xl font-black text-stone-900">
+              {stats.averageCycleLength} Days
+            </span>
+            <p className="text-[11px] text-stone-500">
+              Computed baseline across recorded cycle starts
+            </p>
+          </div>
+
+          <div className="bg-stone-50 p-4 rounded-2xl border border-stone-100 space-y-1">
+            <span className="text-[10px] uppercase font-bold text-stone-400 block">
+              Average Period Duration
+            </span>
+            <span className="text-xl font-black text-rose-600">
+              {stats.averagePeriodLength} Days
+            </span>
+            <p className="text-[11px] text-stone-500">
+              Typical duration of active menstrual flow
+            </p>
+          </div>
+
+          <div className="bg-stone-50 p-4 rounded-2xl border border-stone-100 space-y-1">
+            <span className="text-[10px] uppercase font-bold text-stone-400 block">
+              Cycle Regularity Status
+            </span>
+            <span className="text-xl font-black text-purple-700">
+              {stats.regularity || 'Regular'}
+            </span>
+            <p className="text-[11px] text-stone-500">
+              Prediction variance range remains calibrated
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -6,6 +6,7 @@ import {
   Sparkles,
   User,
   Compass,
+  Heart,
 } from 'lucide-react';
 import { NavigationTab } from '../types';
 
@@ -22,8 +23,9 @@ export const BottomNav: React.FC<BottomNavProps> = ({
 }) => {
   const tabs: { id: NavigationTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
     { id: 'home', label: 'Home', icon: Home },
-    { id: 'calendar', label: 'Calendar', icon: Calendar },
     { id: 'track', label: 'Track', icon: Activity },
+    { id: 'calendar', label: 'Calendar', icon: Calendar },
+    { id: 'wellness', label: 'Wellness', icon: Heart },
     { id: 'insights', label: 'Insights', icon: Compass },
     { id: 'profile', label: 'Profile', icon: User },
   ];
