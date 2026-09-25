@@ -1,3 +1,5 @@
+import { AIResponseMode } from './ai';
+
 export type MenstrualPhase = 'Menstrual' | 'Follicular' | 'Ovulation' | 'Luteal';
 
 export type FlowLevel = 'None' | 'Spotting' | 'Light' | 'Medium' | 'Heavy';
@@ -185,7 +187,13 @@ export interface AIConversationMessage {
   content: string;
   time: string;
   cycleContextIncluded?: boolean;
+  provider?: string;
+  model?: string;
+  category?: string;
+  mode?: AIResponseMode;
 }
+
+export * from './ai';
 
 export type NavigationTab =
   | 'home'
@@ -196,4 +204,5 @@ export type NavigationTab =
   | 'education'
   | 'profile'
   | 'emergency';
+
 
