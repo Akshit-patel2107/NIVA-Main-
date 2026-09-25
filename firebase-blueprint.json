@@ -16,6 +16,8 @@
         "regularity": { "type": "string" },
         "lastPeriodStart": { "type": "string" },
         "healthProfile": { "type": "object" },
+        "padSettings": { "type": "object" },
+        "notifications": { "type": "object" },
         "createdAt": { "type": "string" }
       },
       "required": ["id", "email"]
@@ -27,6 +29,9 @@
       "properties": {
         "date": { "type": "string" },
         "flow": { "type": "string" },
+        "menstrualProduct": { "type": "string" },
+        "padChangesCount": { "type": "number" },
+        "lastPadChangeTime": { "type": "string" },
         "crampsLevel": { "type": "number" },
         "mood": { "type": "string" },
         "symptoms": { "type": "array" },

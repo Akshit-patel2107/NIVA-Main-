@@ -13,8 +13,11 @@ import {
   Check,
   Calendar,
   Save,
+  Bell,
+  Clock,
+  CheckCircle2,
 } from 'lucide-react';
-import { DailyLog, FlowLevel, UserPreferences } from '../types';
+import { DailyLog, FlowLevel, UserPreferences, MenstrualProduct, PadChangeRecord } from '../types';
 import { formatDate, formatDisplayDate } from '../utils/cycleCalculations';
 
 interface TrackViewProps {
@@ -23,7 +26,17 @@ interface TrackViewProps {
   preferences: UserPreferences;
   selectedDate: string;
   onSelectDate: (date: string) => void;
+  onLogInstantPadChange?: () => void;
+  onPromptPadCare?: () => void;
 }
+
+const MENSTRUAL_PRODUCTS: { id: MenstrualProduct; label: string }[] = [
+  { id: 'Pad', label: 'Menstrual Pad' },
+  { id: 'Tampon', label: 'Tampon' },
+  { id: 'Cup', label: 'Menstrual Cup' },
+  { id: 'Period Underwear', label: 'Period Underwear' },
+  { id: 'Other', label: 'Other' },
+];
 
 const SYMPTOM_OPTIONS = [
   { id: 'Cramps', label: 'Pelvic Cramps', icon: '⚡' },
@@ -65,6 +78,8 @@ export const TrackView: React.FC<TrackViewProps> = ({
   preferences,
   selectedDate,
   onSelectDate,
+  onLogInstantPadChange,
+  onPromptPadCare,
 }) => {
   const currentLog: DailyLog = logs[selectedDate] || {
     date: selectedDate,
@@ -85,6 +100,18 @@ export const TrackView: React.FC<TrackViewProps> = ({
   };
 
   const [flow, setFlow] = useState<FlowLevel>(currentLog.flow);
+  const [menstrualProduct, setMenstrualProduct] = useState<MenstrualProduct>(
+    currentLog.menstrualProduct || 'Pad'
+  );
+  const [padChangesCount, setPadChangesCount] = useState<number>(
+    currentLog.padChangesCount || 0
+  );
+  const [lastPadChangeTime, setLastPadChangeTime] = useState<string | undefined>(
+    currentLog.lastPadChangeTime
+  );
+  const [padChangeHistory, setPadChangeHistory] = useState<PadChangeRecord[]>(
+    currentLog.padChangeHistory || []
+  );
   const [crampsLevel, setCrampsLevel] = useState<number>(currentLog.crampsLevel);
   const [mood, setMood] = useState<string>(currentLog.mood);
   const [symptoms, setSymptoms] = useState<string[]>(currentLog.symptoms || []);
@@ -106,6 +133,10 @@ export const TrackView: React.FC<TrackViewProps> = ({
     const l = logs[selectedDate];
     if (l) {
       setFlow(l.flow);
+      setMenstrualProduct(l.menstrualProduct || 'Pad');
+      setPadChangesCount(l.padChangesCount || 0);
+      setLastPadChangeTime(l.lastPadChangeTime);
+      setPadChangeHistory(l.padChangeHistory || []);
       setCrampsLevel(l.crampsLevel);
       setMood(l.mood);
       setSymptoms(l.symptoms || []);
@@ -120,6 +151,10 @@ export const TrackView: React.FC<TrackViewProps> = ({
       setExerciseType(l.exerciseType || 'Walking');
     } else {
       setFlow('None');
+      setMenstrualProduct('Pad');
+      setPadChangesCount(0);
+      setLastPadChangeTime(undefined);
+      setPadChangeHistory([]);
       setCrampsLevel(0);
       setMood('Calm');
       setSymptoms([]);
@@ -135,6 +170,19 @@ export const TrackView: React.FC<TrackViewProps> = ({
     }
   }, [selectedDate, logs]);
 
+  const handleIncrementPad = () => {
+    const nowIso = new Date().toISOString();
+    setPadChangesCount((prev) => prev + 1);
+    setLastPadChangeTime(nowIso);
+    setPadChangeHistory((prev) => [
+      ...prev,
+      { id: `pc-${Date.now()}`, timestamp: nowIso },
+    ]);
+    if (onLogInstantPadChange) {
+      onLogInstantPadChange();
+    }
+  };
+
   const toggleSymptom = (symId: string) => {
     setSymptoms((prev) =>
       prev.includes(symId) ? prev.filter((s) => s !== symId) : [...prev, symId]
@@ -142,15 +190,20 @@ export const TrackView: React.FC<TrackViewProps> = ({
   };
 
   const handleSave = () => {
+    const isPeriodStarted = flow !== 'None';
     const updated: DailyLog = {
       date: selectedDate,
       flow,
+      menstrualProduct: isPeriodStarted ? menstrualProduct : undefined,
+      padChangesCount: menstrualProduct === 'Pad' ? padChangesCount : undefined,
+      lastPadChangeTime: menstrualProduct === 'Pad' ? lastPadChangeTime : undefined,
+      padChangeHistory: menstrualProduct === 'Pad' ? padChangeHistory : undefined,
       crampsLevel,
       mood,
       symptoms,
       discharge,
       notes,
-      confirmedPeriod: flow !== 'None',
+      confirmedPeriod: isPeriodStarted,
       waterGlasses,
       sleepHours,
       sleepQuality,
@@ -162,6 +215,15 @@ export const TrackView: React.FC<TrackViewProps> = ({
     onSaveLog(updated);
     setSavedNotification(true);
     setTimeout(() => setSavedNotification(false), 2500);
+
+    if (
+      isPeriodStarted &&
+      menstrualProduct === 'Pad' &&
+      !preferences.notifications.padCare?.enabled &&
+      onPromptPadCare
+    ) {
+      onPromptPadCare();
+    }
   };
 
   // Historical calculation for symptom frequency chart
@@ -243,7 +305,12 @@ export const TrackView: React.FC<TrackViewProps> = ({
               {FLOW_LEVELS.map((f) => (
                 <button
                   key={f.id}
-                  onClick={() => setFlow(f.id)}
+                  onClick={() => {
+                    setFlow(f.id);
+                    if (f.id !== 'None' && !menstrualProduct) {
+                      setMenstrualProduct('Pad');
+                    }
+                  }}
                   className={`p-3 rounded-2xl text-left border transition-all ${
                     flow === f.id
                       ? 'bg-rose-50 border-rose-300 ring-2 ring-rose-400/40 text-rose-950 font-semibold shadow-xs'
@@ -257,6 +324,108 @@ export const TrackView: React.FC<TrackViewProps> = ({
                 </button>
               ))}
             </div>
+
+            {/* Menstrual Product & Dedicated Pad Usage Tracking */}
+            {flow !== 'None' && (
+              <div className="pt-3 border-t border-stone-100 space-y-3">
+                <div className="space-y-1.5">
+                  <span className="text-xs font-bold text-stone-800 flex items-center justify-between">
+                    <span className="flex items-center space-x-1.5">
+                      <Heart className="w-3.5 h-3.5 text-rose-500" />
+                      <span>Menstrual Product</span>
+                    </span>
+                    <span className="text-[10px] text-stone-400 font-normal">
+                      Primary protection used today
+                    </span>
+                  </span>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {MENSTRUAL_PRODUCTS.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => setMenstrualProduct(p.id)}
+                        className={`p-2 rounded-xl text-xs border text-center transition-all ${
+                          menstrualProduct === p.id
+                            ? 'bg-rose-50 border-rose-300 ring-1 ring-rose-400 text-rose-900 font-bold'
+                            : 'bg-stone-50/80 border-stone-200 text-stone-600 hover:bg-stone-100'
+                        }`}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Pad Usage Details */}
+                {menstrualProduct === 'Pad' && (
+                  <div className="p-3.5 rounded-2xl bg-rose-50/60 border border-rose-100 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-xs font-bold text-stone-900 block">
+                          Pad Changes Today
+                        </span>
+                        <span className="text-[10px] text-stone-500">
+                          {lastPadChangeTime
+                            ? `Last changed at ${new Date(lastPadChangeTime).toLocaleTimeString([], {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}`
+                            : 'No changes recorded for this day yet'}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center space-x-2">
+                        <button
+                          type="button"
+                          onClick={() => setPadChangesCount((prev) => Math.max(0, prev - 1))}
+                          className="w-7 h-7 rounded-lg bg-white border border-stone-200 text-stone-600 flex items-center justify-center hover:bg-stone-50"
+                        >
+                          <Minus className="w-3.5 h-3.5" />
+                        </button>
+                        <span className="font-bold text-stone-900 text-xs w-5 text-center">
+                          {padChangesCount}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleIncrementPad}
+                          className="w-7 h-7 rounded-lg bg-rose-600 text-white flex items-center justify-center hover:bg-rose-700 shadow-2xs"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1">
+                      <button
+                        type="button"
+                        onClick={handleIncrementPad}
+                        className="py-1.5 px-3 rounded-xl bg-white border border-rose-200 text-rose-700 text-xs font-semibold hover:bg-rose-50 transition-colors flex items-center space-x-1.5 shadow-2xs"
+                      >
+                        <Check className="w-3.5 h-3.5 text-rose-600" />
+                        <span>Log Pad Change Right Now (+1)</span>
+                      </button>
+
+                      {preferences.notifications.padCare?.enabled ? (
+                        <span className="text-[10px] text-rose-800 flex items-center space-x-1">
+                          <Bell className="w-3 h-3 text-rose-600" />
+                          <span>Timer resets on log</span>
+                        </span>
+                      ) : (
+                        onPromptPadCare && (
+                          <button
+                            type="button"
+                            onClick={onPromptPadCare}
+                            className="text-[11px] text-rose-600 font-semibold hover:underline"
+                          >
+                            Enable Pad Reminders
+                          </button>
+                        )
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Cramps Level Slider */}
             <div className="pt-3 border-t border-stone-100 space-y-2">

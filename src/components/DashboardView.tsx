@@ -14,6 +14,7 @@ import {
   Check,
   CheckCircle2,
   Info,
+  Bell,
 } from 'lucide-react';
 import {
   CycleStatus,
@@ -39,6 +40,9 @@ interface DashboardViewProps {
   onOpenAI: () => void;
   onNavigateTab: (tab: NavigationTab) => void;
   onUpdateDailyLog: (log: DailyLog) => void;
+  onLogPadChange?: () => void;
+  onOpenPadPrompt?: () => void;
+  onOpenNotifications?: () => void;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
@@ -51,6 +55,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onOpenAI,
   onNavigateTab,
   onUpdateDailyLog,
+  onLogPadChange,
+  onOpenPadPrompt,
+  onOpenNotifications,
 }) => {
   const phaseColors = getPhaseColor(status.currentPhase);
   const phaseInfo = getPhaseInfo(status.currentPhase);
@@ -258,6 +265,79 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* PAD CARE STATUS CARD (Visible during active period or when Pad Care is enabled) */}
+      {((todayLog?.flow && todayLog.flow !== 'None') || status.currentPhase === 'Menstrual' || preferences.notifications.padCare?.enabled) && (
+        <div className="bg-gradient-to-r from-rose-50/80 via-white to-purple-50/80 rounded-3xl p-4 sm:p-5 border border-rose-200/80 shadow-2xs space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-2xl bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-rose-200">
+                <Bell className="w-5 h-5" />
+              </div>
+              <div className="space-y-0.5">
+                <div className="flex items-center space-x-2">
+                  <span className="text-xs font-bold text-stone-900">
+                    Pad Care & Hygiene Assistant
+                  </span>
+                  <span className="text-[10px] bg-rose-100 text-rose-800 font-bold px-2 py-0.2 rounded-full">
+                    {preferences.notifications.padCare?.enabled ? 'Active' : 'Optional'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-stone-500">
+                  {todayLog?.padChangesCount
+                    ? `Changed ${todayLog.padChangesCount} time${todayLog.padChangesCount > 1 ? 's' : ''} today`
+                    : 'No pad changes recorded today'}{' '}
+                  {todayLog?.lastPadChangeTime && (
+                    <>
+                      • Last at{' '}
+                      <strong className="text-stone-700">
+                        {new Date(todayLog.lastPadChangeTime).toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </strong>
+                    </>
+                  )}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              {onLogPadChange && (
+                <button
+                  onClick={() => {
+                    onLogPadChange();
+                    triggerToast('Logged pad change! Timer reset 💜');
+                  }}
+                  className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs transition-colors flex items-center space-x-1.5"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>+ Changed Pad</span>
+                </button>
+              )}
+
+              {!preferences.notifications.padCare?.enabled && onOpenPadPrompt && (
+                <button
+                  onClick={onOpenPadPrompt}
+                  className="px-3 py-2 rounded-xl border border-rose-300 bg-white hover:bg-rose-50 text-rose-700 text-xs font-semibold transition-colors"
+                >
+                  Enable Reminders
+                </button>
+              )}
+
+              {onOpenNotifications && (
+                <button
+                  onClick={onOpenNotifications}
+                  title="Notification Center"
+                  className="p-2 rounded-xl border border-stone-200 bg-white hover:bg-stone-50 text-stone-600 transition-colors"
+                >
+                  <Bell className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* QUICK ACTIONS ROW: Log Period, Log Symptoms, Log Mood, Track Wellness, Calendar, Ask NIVA AI */}
       <div className="space-y-2">

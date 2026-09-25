@@ -41,8 +41,17 @@ import {
   NavigationTab,
   UserAccount,
   UserPreferences,
+  NivaNotification,
+  PadCareSettings,
 } from './types';
 import { computeCycleStatus, formatDate } from './utils/cycleCalculations';
+import {
+  shouldTriggerPadReminder,
+  getNotificationText,
+  sendSystemNotification,
+  loadNotificationsFromStorage,
+  saveNotificationsToStorage,
+} from './utils/notificationManager';
 
 // Components
 import { Header } from './components/Header';
@@ -62,6 +71,9 @@ import { PinLockScreen } from './components/PinLockScreen';
 import { AuthModal } from './components/AuthModal';
 import { OnboardingModal } from './components/OnboardingModal';
 import { LandingPage } from './components/LandingPage';
+import { PadReminderPromptModal } from './components/PadReminderPromptModal';
+import { NotificationBannerToast } from './components/NotificationBannerToast';
+import { NotificationCenterModal } from './components/NotificationCenterModal';
 import { Sparkles, ShieldCheck, Heart } from 'lucide-react';
 
 export default function App() {
@@ -80,12 +92,18 @@ export default function App() {
   const [selectedDate, setSelectedDate] = useState<string>(() => formatDate(new Date()));
   const [isLandingView, setIsLandingView] = useState<boolean>(false);
 
-  // Modals
+  // Modals & Notifications
   const [logModalOpen, setLogModalOpen] = useState<boolean>(false);
   const [aiModalOpen, setAiModalOpen] = useState<boolean>(false);
   const [onboardingOpen, setOnboardingOpen] = useState<boolean>(false);
   const [emergencyModalOpen, setEmergencyModalOpen] = useState<boolean>(false);
   const [privacyCenterOpen, setPrivacyCenterOpen] = useState<boolean>(false);
+  const [notifications, setNotifications] = useState<NivaNotification[]>(() =>
+    loadNotificationsFromStorage()
+  );
+  const [activeBannerNotification, setActiveBannerNotification] = useState<NivaNotification | null>(null);
+  const [padPromptOpen, setPadPromptOpen] = useState<boolean>(false);
+  const [notificationCenterOpen, setNotificationCenterOpen] = useState<boolean>(false);
 
   // Listen for Firebase Auth state changes
   useEffect(() => {
@@ -186,9 +204,210 @@ export default function App() {
       [log.date]: log,
     }));
 
+    // If flow is marked 'None' on today's log, automatically pause pad reminders
+    if (
+      log.date === todayStr &&
+      log.flow === 'None' &&
+      preferences.notifications.padCare?.enabled
+    ) {
+      handleUpdatePreferences({
+        notifications: {
+          ...preferences.notifications,
+          padCare: {
+            ...preferences.notifications.padCare,
+            activePeriodFinished: true,
+          },
+        },
+      });
+    }
+
     if (currentUser) {
       saveDailyLogToFirestore(currentUser.uid, log);
     }
+  };
+
+  // Intelligent Background Notification Timer for Pad Care
+  useEffect(() => {
+    const checkReminder = () => {
+      const padCare = preferences.notifications.padCare;
+      if (!padCare || !padCare.enabled) return;
+
+      const check = shouldTriggerPadReminder(padCare, logs, todayStr);
+      if (check.shouldTrigger) {
+        const notifText = getNotificationText('pad_check');
+        const newNotif: NivaNotification = {
+          id: `pad-remind-${Date.now()}`,
+          type: 'pad_check',
+          title: notifText.detailedTitle,
+          message: notifText.detailedBody,
+          privateMessage: notifText.privateBody,
+          createdAt: new Date().toISOString(),
+          read: false,
+        };
+
+        // Update notifications list
+        setNotifications((prev) => {
+          const updated = [newNotif, ...prev];
+          saveNotificationsToStorage(updated, currentUser?.uid);
+          return updated;
+        });
+
+        // Update lastNotifiedAt to prevent duplicate alerts
+        const updatedPadCare: PadCareSettings = {
+          ...padCare,
+          lastNotifiedAt: new Date().toISOString(),
+        };
+        handleUpdatePreferences({
+          notifications: {
+            ...preferences.notifications,
+            padCare: updatedPadCare,
+          },
+        });
+
+        // Show system notification
+        sendSystemNotification(
+          newNotif,
+          padCare.privacyMode || 'private',
+          () => {
+            setActiveBannerNotification(newNotif);
+          }
+        );
+
+        // Show in-app banner toast
+        setActiveBannerNotification(newNotif);
+      }
+    };
+
+    // Run check immediately on mount or focus
+    checkReminder();
+    const interval = setInterval(checkReminder, 30000); // Check every 30 seconds
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        checkReminder();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [preferences.notifications.padCare, logs, todayStr, currentUser]);
+
+  // Handlers for Pad Usage Notifications
+  const handleLogPadChange = () => {
+    const nowIso = new Date().toISOString();
+    const currentTodayLog = logs[todayStr] || {
+      date: todayStr,
+      flow: 'Medium',
+      menstrualProduct: 'Pad',
+      crampsLevel: 0,
+      mood: 'Calm',
+      symptoms: [],
+      discharge: 'None',
+      waterGlasses: 6,
+      sleepHours: 7.5,
+      sleepQuality: 'Good',
+      stressLevel: 2,
+      energyLevel: 3,
+      exerciseMinutes: 20,
+    };
+
+    const updatedLog: DailyLog = {
+      ...currentTodayLog,
+      flow: currentTodayLog.flow === 'None' ? 'Medium' : currentTodayLog.flow,
+      menstrualProduct: 'Pad',
+      padChangesCount: (currentTodayLog.padChangesCount || 0) + 1,
+      lastPadChangeTime: nowIso,
+      padChangeHistory: [
+        ...(currentTodayLog.padChangeHistory || []),
+        { id: `pc-${Date.now()}`, timestamp: nowIso },
+      ],
+      confirmedPeriod: true,
+    };
+
+    handleSaveDailyLog(updatedLog);
+
+    if (preferences.notifications.padCare) {
+      handleUpdatePreferences({
+        notifications: {
+          ...preferences.notifications,
+          padCare: {
+            ...preferences.notifications.padCare,
+            lastPadChangeTime: nowIso,
+            snoozedUntil: undefined,
+            activePeriodFinished: false,
+          },
+        },
+      });
+    }
+
+    setActiveBannerNotification(null);
+  };
+
+  const handleSnoozePadReminder = () => {
+    const snoozeTime = new Date(Date.now() + 30 * 60000).toISOString();
+    if (preferences.notifications.padCare) {
+      handleUpdatePreferences({
+        notifications: {
+          ...preferences.notifications,
+          padCare: {
+            ...preferences.notifications.padCare,
+            snoozedUntil: snoozeTime,
+          },
+        },
+      });
+    }
+    setActiveBannerNotification(null);
+  };
+
+  const handleEnablePadCareSettings = (settings: Partial<PadCareSettings>) => {
+    const currentPadCare = preferences.notifications.padCare;
+    const newPadCare: PadCareSettings = {
+      ...currentPadCare,
+      ...settings,
+      enabled: true,
+      lastPadChangeTime: new Date().toISOString(),
+      activePeriodFinished: false,
+    };
+    handleUpdatePreferences({
+      notifications: {
+        ...preferences.notifications,
+        padCare: newPadCare,
+      },
+    });
+  };
+
+  const handleTriggerTestNotification = () => {
+    const text = getNotificationText('pad_check');
+    const testNotif: NivaNotification = {
+      id: `test-${Date.now()}`,
+      type: 'pad_check',
+      title: text.detailedTitle,
+      message: text.detailedBody,
+      privateMessage: text.privateBody,
+      createdAt: new Date().toISOString(),
+      read: false,
+    };
+
+    setNotifications((prev) => {
+      const next = [testNotif, ...prev];
+      saveNotificationsToStorage(next, currentUser?.uid);
+      return next;
+    });
+
+    sendSystemNotification(
+      testNotif,
+      preferences.notifications.padCare?.privacyMode || 'private',
+      () => setActiveBannerNotification(testNotif)
+    );
+    setActiveBannerNotification(testNotif);
+  };
+
+  const handleClearNotifications = () => {
+    setNotifications([]);
+    saveNotificationsToStorage([], currentUser?.uid);
   };
 
   const handleDeleteDailyLog = (dateStr: string) => {
@@ -370,6 +589,8 @@ export default function App() {
         onOpenPrivacyCenter={() => setPrivacyCenterOpen(true)}
         onOpenLandingPage={() => setIsLandingView(true)}
         onOpenAI={() => setAiModalOpen(true)}
+        onOpenNotifications={() => setNotificationCenterOpen(true)}
+        unreadNotificationsCount={notifications.filter((n) => !n.read).length}
       />
 
       {/* Main App Content */}
@@ -389,6 +610,9 @@ export default function App() {
             onOpenAI={() => setAiModalOpen(true)}
             onNavigateTab={setCurrentTab}
             onUpdateDailyLog={handleSaveDailyLog}
+            onLogPadChange={handleLogPadChange}
+            onOpenPadPrompt={() => setPadPromptOpen(true)}
+            onOpenNotifications={() => setNotificationCenterOpen(true)}
           />
         )}
 
@@ -415,6 +639,8 @@ export default function App() {
             preferences={preferences}
             selectedDate={selectedDate}
             onSelectDate={setSelectedDate}
+            onLogInstantPadChange={handleLogPadChange}
+            onPromptPadCare={() => setPadPromptOpen(true)}
           />
         )}
 
@@ -445,6 +671,7 @@ export default function App() {
             account={account}
             stats={stats}
             preferences={preferences}
+            logs={logs}
             onUpdateAccount={handleUpdateAccount}
             onUpdateStats={handleUpdateStats}
             onUpdatePreferences={handleUpdatePreferences}
@@ -454,6 +681,7 @@ export default function App() {
             onRerunOnboarding={() => setOnboardingOpen(true)}
             onClearAIHistory={handleClearChatHistory}
             onDeleteAccount={handleWipeAllData}
+            onTriggerTestNotification={handleTriggerTestNotification}
           />
         )}
 
@@ -474,8 +702,56 @@ export default function App() {
         onClose={() => setLogModalOpen(false)}
         dateStr={selectedDate}
         existingLog={logs[selectedDate]}
-        onSaveLog={handleSaveDailyLog}
+        padCareEnabled={preferences.notifications.padCare?.enabled ?? false}
+        onSaveLog={(log, shouldPrompt) => {
+          handleSaveDailyLog(log);
+          if (shouldPrompt) {
+            setPadPromptOpen(true);
+          }
+        }}
         onDeleteLog={handleDeleteDailyLog}
+        onLogInstantPadChange={handleLogPadChange}
+      />
+
+      {/* Pad Reminder Prompt Dialog */}
+      <PadReminderPromptModal
+        isOpen={padPromptOpen}
+        onClose={() => setPadPromptOpen(false)}
+        logs={logs}
+        onEnable={handleEnablePadCareSettings}
+        onMaybeLater={() => setPadPromptOpen(false)}
+      />
+
+      {/* Active Notification Banner Toast */}
+      <NotificationBannerToast
+        notification={activeBannerNotification}
+        privacyMode={preferences.notifications.padCare?.privacyMode || 'private'}
+        onChangedIt={handleLogPadChange}
+        onRemindLater={handleSnoozePadReminder}
+        onOpenNiva={() => {
+          setActiveBannerNotification(null);
+          setCurrentTab('home');
+        }}
+        onDismiss={() => setActiveBannerNotification(null)}
+      />
+
+      {/* Notification Center Modal */}
+      <NotificationCenterModal
+        isOpen={notificationCenterOpen}
+        onClose={() => setNotificationCenterOpen(false)}
+        notifications={notifications}
+        padCare={preferences.notifications.padCare}
+        privacyMode={preferences.notifications.padCare?.privacyMode || 'private'}
+        logs={logs}
+        todayStr={todayStr}
+        onLogPadChange={handleLogPadChange}
+        onRemindLater={handleSnoozePadReminder}
+        onTriggerTestNotification={handleTriggerTestNotification}
+        onClearNotifications={handleClearNotifications}
+        onOpenSettings={() => {
+          setNotificationCenterOpen(false);
+          setCurrentTab('profile');
+        }}
       />
 
       <NivaAIChatModal

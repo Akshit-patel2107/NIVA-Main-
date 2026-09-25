@@ -6,9 +6,21 @@ export type FertilityLevel = 'Low' | 'Medium' | 'High (Fertile Window)' | 'Peak 
 
 export type RegularityStatus = 'Regular' | 'Somewhat Irregular' | 'Irregular' | 'Not sure';
 
+export type MenstrualProduct = 'Pad' | 'Tampon' | 'Cup' | 'Period Underwear' | 'Other';
+
+export interface PadChangeRecord {
+  id: string;
+  timestamp: string; // ISO string
+  notes?: string;
+}
+
 export interface DailyLog {
   date: string; // YYYY-MM-DD
   flow: FlowLevel;
+  menstrualProduct?: MenstrualProduct;
+  padChangesCount?: number;
+  lastPadChangeTime?: string; // ISO string or time string e.g. "14:30"
+  padChangeHistory?: PadChangeRecord[];
   crampsLevel: number; // 0 - 5 scale
   mood: string;
   symptoms: string[];
@@ -82,6 +94,51 @@ export interface UserAccount {
   trackingPreferences?: TrackingPreferences;
 }
 
+export type PadReminderFrequency =
+  | 'auto'
+  | '2h'
+  | '3h'
+  | '4h'
+  | '5h'
+  | '6h'
+  | 'custom';
+
+export type PadPrivacyMode = 'private' | 'detailed';
+
+export interface PadCareSettings {
+  enabled: boolean;
+  frequency: PadReminderFrequency;
+  customHours?: number; // e.g. 3.5
+  privacyMode: PadPrivacyMode; // default: 'private' ("You have a new NIVA reminder")
+  quietHours: {
+    enabled: boolean;
+    start: string; // e.g. "22:00"
+    end: string; // e.g. "07:00"
+  };
+  lastPadChangeTime?: string; // ISO string
+  lastNotifiedAt?: string; // ISO string
+  snoozedUntil?: string; // ISO string
+  promptDismissedUntil?: string; // ISO string or date
+  activePeriodFinished?: boolean;
+}
+
+export type NotificationType =
+  | 'pad_check'
+  | 'period_started'
+  | 'period_care'
+  | 'daily_checkin';
+
+export interface NivaNotification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  privateMessage: string;
+  createdAt: string; // ISO string
+  read: boolean;
+  actionTaken?: 'changed' | 'snoozed' | 'dismissed';
+}
+
 export interface NotificationSettings {
   periodReminder: boolean;
   daysBeforePeriod: number; // 1, 2, or 3 days
@@ -89,6 +146,7 @@ export interface NotificationSettings {
   wellnessCheckin: boolean;
   discreteWording: boolean; // "Personal check-in" vs "Period starting"
   waterReminder: boolean;
+  padCare: PadCareSettings;
 }
 
 export interface UserPreferences {

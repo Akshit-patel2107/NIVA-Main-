@@ -56,6 +56,21 @@ export const defaultPreferences: UserPreferences = {
     wellnessCheckin: true,
     discreteWording: true,
     waterReminder: true,
+    padCare: {
+      enabled: false,
+      frequency: 'auto',
+      customHours: 4,
+      privacyMode: 'private', // Private Mode is default to protect sensitive menstrual info
+      quietHours: {
+        enabled: true,
+        start: '22:00',
+        end: '07:00',
+      },
+      lastPadChangeTime: undefined,
+      lastNotifiedAt: undefined,
+      snoozedUntil: undefined,
+      activePeriodFinished: false,
+    },
   },
   appearance: {
     highContrast: false,
@@ -110,7 +125,24 @@ export function saveAccount(account: UserAccount): void {
 export function loadPreferences(userId?: string): UserPreferences {
   try {
     const raw = localStorage.getItem(getStorageKey('prefs', userId));
-    return raw ? { ...defaultPreferences, ...JSON.parse(raw) } : defaultPreferences;
+    if (!raw) return defaultPreferences;
+    const parsed = JSON.parse(raw);
+    return {
+      ...defaultPreferences,
+      ...parsed,
+      notifications: {
+        ...defaultPreferences.notifications,
+        ...(parsed.notifications || {}),
+        padCare: {
+          ...defaultPreferences.notifications.padCare,
+          ...(parsed.notifications?.padCare || {}),
+          quietHours: {
+            ...defaultPreferences.notifications.padCare.quietHours,
+            ...(parsed.notifications?.padCare?.quietHours || {}),
+          },
+        },
+      },
+    };
   } catch {
     return defaultPreferences;
   }

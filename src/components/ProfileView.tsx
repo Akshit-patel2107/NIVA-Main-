@@ -24,14 +24,33 @@ import {
   RotateCcw,
   Smartphone,
   Copy,
+  Heart,
+  Clock,
+  CheckCircle2,
+  Moon,
 } from 'lucide-react';
-import { CycleStats, RegularityStatus, UserAccount, UserPreferences } from '../types';
+import {
+  CycleStats,
+  RegularityStatus,
+  UserAccount,
+  UserPreferences,
+  DailyLog,
+  PadCareSettings,
+  PadReminderFrequency,
+  PadPrivacyMode,
+} from '../types';
 import { clearAIChatHistory, exportAllData } from '../utils/storage';
+import {
+  calculatePersonalizedPadInterval,
+  requestNotificationPermission,
+  getSystemNotificationPermission,
+} from '../utils/notificationManager';
 
 interface ProfileViewProps {
   account: UserAccount;
   stats: CycleStats;
   preferences: UserPreferences;
+  logs?: Record<string, DailyLog>;
   onUpdateAccount: (updates: Partial<UserAccount>) => void;
   onUpdateStats: (updates: Partial<CycleStats>) => void;
   onUpdatePreferences: (updates: Partial<UserPreferences>) => void;
@@ -41,12 +60,14 @@ interface ProfileViewProps {
   onRerunOnboarding?: () => void;
   onClearAIHistory?: () => void;
   onDeleteAccount?: () => void;
+  onTriggerTestNotification?: () => void;
 }
 
 export const ProfileView: React.FC<ProfileViewProps> = ({
   account,
   stats,
   preferences,
+  logs = {},
   onUpdateAccount,
   onUpdateStats,
   onUpdatePreferences,
@@ -56,6 +77,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   onRerunOnboarding,
   onClearAIHistory,
   onDeleteAccount,
+  onTriggerTestNotification,
 }) => {
   // Edit Profile Modal
   const [editingProfile, setEditingProfile] = useState<boolean>(false);
@@ -109,6 +131,29 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       },
     });
   };
+
+  const handlePadCareUpdate = (updates: Partial<PadCareSettings>) => {
+    onUpdatePreferences({
+      notifications: {
+        ...preferences.notifications,
+        padCare: {
+          ...preferences.notifications.padCare,
+          ...updates,
+        },
+      },
+    });
+  };
+
+  const [browserPermission, setBrowserPermission] = useState<string>(() =>
+    getSystemNotificationPermission()
+  );
+
+  const handleRequestBrowserPermission = async () => {
+    const perm = await requestNotificationPermission();
+    setBrowserPermission(perm);
+  };
+
+  const personalizedPad = calculatePersonalizedPadInterval(logs);
 
   const handleExportData = () => {
     const dataStr = exportAllData();
@@ -381,49 +426,341 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </div>
       </div>
 
-      {/* SECTION 2: NOTIFICATION SETTINGS (WITH PRIVACY-FRIENDLY WORDING) */}
-      <div className="bg-white rounded-3xl p-6 border border-stone-200/80 shadow-sm space-y-4">
-        <div className="flex items-center space-x-2">
-          <Bell className="w-5 h-5 text-rose-500" />
-          <div>
-            <h3 className="text-sm font-bold text-stone-900">
-              Notification Settings
-            </h3>
-            <p className="text-xs text-stone-500">
-              Manage reminders and lock-screen privacy phrasing.
+      {/* SECTION 2: DEDICATED PAD USAGE & NOTIFICATION SYSTEM */}
+      <div className="bg-white rounded-3xl p-6 sm:p-7 border border-stone-200/80 shadow-sm space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-100 pb-4">
+          <div className="flex items-center space-x-2.5">
+            <div className="w-9 h-9 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center">
+              <Bell className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-stone-900 font-serif-accent">
+                Smart Notification & Pad Care Settings
+              </h3>
+              <p className="text-xs text-stone-500">
+                Personalized reminders, quiet hours, and lock-screen privacy modes.
+              </p>
+            </div>
+          </div>
+
+          {onTriggerTestNotification && (
+            <button
+              onClick={onTriggerTestNotification}
+              className="self-start sm:self-center px-3 py-1.5 rounded-xl border border-rose-200 bg-rose-50/60 hover:bg-rose-100 text-rose-800 text-xs font-semibold transition-colors flex items-center space-x-1.5 shadow-2xs"
+            >
+              <Bell className="w-3.5 h-3.5 text-rose-600" />
+              <span>Send Test Reminder</span>
+            </button>
+          )}
+        </div>
+
+        {/* 1. PRIMARY: PAD CARE REMINDER SYSTEM */}
+        <div className="p-5 rounded-3xl bg-gradient-to-br from-rose-50/70 via-stone-50 to-purple-50/50 border border-rose-200/90 space-y-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-1 pr-2">
+              <div className="flex items-center space-x-2">
+                <span className="text-xs font-bold text-stone-900 block">
+                  Pad Care Reminders
+                </span>
+                <span className="text-[10px] bg-rose-100 text-rose-800 font-bold px-2 py-0.5 rounded-full">
+                  Intelligent Hygiene
+                </span>
+              </div>
+              <p className="text-xs text-stone-600 leading-relaxed">
+                When enabled during your period, NIVA gently reminds you to check your pad based on your personal comfort rhythm and flow.
+              </p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer shrink-0 mt-0.5">
+              <input
+                type="checkbox"
+                checked={preferences.notifications.padCare?.enabled ?? false}
+                onChange={(e) =>
+                  handlePadCareUpdate({
+                    enabled: e.target.checked,
+                    lastPadChangeTime: e.target.checked ? new Date().toISOString() : undefined,
+                    activePeriodFinished: false,
+                  })
+                }
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-stone-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-stone-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-600"></div>
+            </label>
+          </div>
+
+          {/* Gentle non-medical language banner */}
+          <div className="p-3.5 rounded-2xl bg-white/90 border border-stone-200/80 text-[11px] text-stone-600 space-y-1">
+            <span className="font-bold text-stone-800 flex items-center space-x-1.5">
+              <Heart className="w-3.5 h-3.5 text-rose-500" />
+              <span>Gentle, Non-Medical Reminder Phrasing</span>
+            </span>
+            <p className="italic text-stone-700 bg-rose-50/50 p-2 rounded-xl border border-rose-100/60 font-serif">
+              “It may be a good time to check your pad. Change it according to your flow, comfort, and hygiene needs.”
             </p>
+            <p className="text-[10px] text-stone-400">
+              *NIVA does not present fixed time intervals as medical requirements. Frequency is customizable for your comfort.
+            </p>
+          </div>
+
+          {preferences.notifications.padCare?.enabled && (
+            <div className="space-y-4 pt-2 border-t border-rose-200/60 text-xs">
+              {/* Frequency selection */}
+              <div className="space-y-2">
+                <label className="font-bold text-stone-800 flex items-center justify-between">
+                  <span className="flex items-center space-x-1.5">
+                    <Clock className="w-3.5 h-3.5 text-rose-500" />
+                    <span>Reminder Frequency</span>
+                  </span>
+                  <span className="text-[11px] text-stone-500 font-normal">
+                    Select your preferred rhythm
+                  </span>
+                </label>
+
+                {/* Personalized option */}
+                <button
+                  type="button"
+                  onClick={() => handlePadCareUpdate({ frequency: 'auto' })}
+                  className={`w-full text-left p-3.5 rounded-2xl border transition-all flex items-start justify-between ${
+                    preferences.notifications.padCare.frequency === 'auto'
+                      ? 'bg-rose-50 border-rose-300 ring-2 ring-rose-400/30'
+                      : 'bg-white border-stone-200 hover:bg-stone-50'
+                  }`}
+                >
+                  <div className="space-y-0.5 pr-2">
+                    <div className="flex items-center space-x-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-rose-600" />
+                      <span className="font-bold text-stone-900 text-xs">
+                        Personalized Smart Reminder
+                      </span>
+                      <span className="text-[10px] bg-rose-100 text-rose-800 font-bold px-2 py-0.2 rounded-full">
+                        ~{personalizedPad.hours}h
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-stone-500">
+                      {personalizedPad.isDefault
+                        ? 'Uses your historical logged pad changes to calibrate. Starts at a gentle ~4-hour baseline.'
+                        : `Calculated dynamically from your ${personalizedPad.sampleCount} logged pad changes.`}
+                    </p>
+                  </div>
+                  {preferences.notifications.padCare.frequency === 'auto' && (
+                    <CheckCircle2 className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  )}
+                </button>
+
+                {/* Preset intervals */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { id: '2h', label: 'Every 2 hours', note: 'Heavier flow' },
+                    { id: '3h', label: 'Every 3 hours', note: 'Medium flow' },
+                    { id: '4h', label: 'Every 4 hours', note: 'Hygienic standard' },
+                    { id: '6h', label: 'Every 6 hours', note: 'Lighter flow' },
+                  ].map((freq) => (
+                    <button
+                      key={freq.id}
+                      type="button"
+                      onClick={() =>
+                        handlePadCareUpdate({
+                          frequency: freq.id as PadReminderFrequency,
+                        })
+                      }
+                      className={`p-2.5 rounded-2xl border text-left transition-all ${
+                        preferences.notifications.padCare.frequency === freq.id
+                          ? 'bg-rose-50 border-rose-300 ring-1 ring-rose-400 text-rose-900 font-bold'
+                          : 'bg-white border-stone-200 text-stone-700 hover:bg-stone-50'
+                      }`}
+                    >
+                      <span className="text-xs font-bold block">{freq.label}</span>
+                      <span className="text-[10px] text-stone-400 block">{freq.note}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Automatic Intelligent Behaviors */}
+              <div className="p-3.5 rounded-2xl bg-white/80 border border-stone-200/80 space-y-1.5 text-[11px] text-stone-600">
+                <span className="font-bold text-stone-800 flex items-center space-x-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Intelligent Personal Assistant Protection</span>
+                </span>
+                <ul className="space-y-1 pl-4 list-disc text-stone-600 marker:text-rose-400">
+                  <li>
+                    <strong>Automatic Timer Reset:</strong> Whenever you tap <em>“I Changed It”</em> or log a pad change, the timer resets automatically from that exact moment.
+                  </li>
+                  <li>
+                    <strong>Automatic Auto-Pause:</strong> When you mark your period as finished, pad reminders automatically pause so you are never disturbed out of cycle.
+                  </li>
+                  <li>
+                    <strong>Anti-Spam & Timezone Safe:</strong> Notifications are limited, intelligent, and adjust to your device timezone without duplicate alerts.
+                  </li>
+                </ul>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 2. NOTIFICATION DISPLAY PRIVACY: PRIVATE MODE VS DETAILED MODE */}
+        <div className="p-5 rounded-3xl bg-stone-50 border border-stone-200/80 space-y-3 text-xs">
+          <div className="flex items-center space-x-2">
+            <ShieldCheck className="w-4 h-4 text-purple-600" />
+            <h4 className="text-xs font-bold text-stone-900">
+              Notification Display Privacy Mode
+            </h4>
+          </div>
+          <p className="text-[11px] text-stone-500">
+            Choose what appears on your device lock-screen or notification tray to protect sensitive menstrual information.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+            {/* Private Mode (Default) */}
+            <button
+              type="button"
+              onClick={() => handlePadCareUpdate({ privacyMode: 'private' })}
+              className={`p-4 rounded-2xl border text-left transition-all space-y-1.5 ${
+                (preferences.notifications.padCare?.privacyMode ?? 'private') === 'private'
+                  ? 'bg-purple-50 border-purple-300 ring-2 ring-purple-400/30 shadow-xs'
+                  : 'bg-white border-stone-200 hover:bg-stone-50'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-stone-900 text-xs flex items-center space-x-1.5">
+                  <span>Private Mode</span>
+                  <span className="text-[9px] bg-purple-100 text-purple-800 font-bold px-1.5 py-0.2 rounded-full">
+                    Default & Safe
+                  </span>
+                </span>
+                {(preferences.notifications.padCare?.privacyMode ?? 'private') === 'private' && (
+                  <CheckCircle2 className="w-4 h-4 text-purple-600" />
+                )}
+              </div>
+              <p className="text-[11px] text-stone-600">
+                Lock-screen notification reads:
+              </p>
+              <div className="p-2 rounded-xl bg-white border border-purple-200/60 text-[11px] font-semibold text-purple-900">
+                “You have a new NIVA reminder.”
+              </div>
+              <p className="text-[10px] text-stone-400">
+                Guarantees discretion in classrooms, workplaces, or public spaces.
+              </p>
+            </button>
+
+            {/* Detailed Mode */}
+            <button
+              type="button"
+              onClick={() => handlePadCareUpdate({ privacyMode: 'detailed' })}
+              className={`p-4 rounded-2xl border text-left transition-all space-y-1.5 ${
+                preferences.notifications.padCare?.privacyMode === 'detailed'
+                  ? 'bg-rose-50 border-rose-300 ring-2 ring-rose-400/30 shadow-xs'
+                  : 'bg-white border-stone-200 hover:bg-stone-50'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-stone-900 text-xs">Detailed Mode</span>
+                {preferences.notifications.padCare?.privacyMode === 'detailed' && (
+                  <CheckCircle2 className="w-4 h-4 text-rose-600" />
+                )}
+              </div>
+              <p className="text-[11px] text-stone-600">
+                Lock-screen notification reads:
+              </p>
+              <div className="p-2 rounded-xl bg-white border border-rose-200/60 text-[11px] font-medium text-rose-900">
+                “It may be a good time to check your pad. Change it according to your flow, comfort, and hygiene needs.”
+              </div>
+              <p className="text-[10px] text-stone-400">
+                Displays the complete pad care guidance directly on lock screen.
+              </p>
+            </button>
           </div>
         </div>
 
-        <div className="space-y-3 pt-1 text-xs">
-          {/* Privacy-Friendly Notification Wording */}
-          <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200/80 space-y-1.5">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-stone-800 text-xs">
-                Privacy-Friendly Notification Wording
-              </span>
+        {/* 3. QUIET HOURS (SILENCE NOTIFICATIONS WHILE SLEEPING) */}
+        <div className="p-5 rounded-3xl bg-stone-50 border border-stone-200/80 space-y-3.5 text-xs">
+          <div className="flex items-start justify-between">
+            <div className="space-y-0.5">
+              <div className="flex items-center space-x-2">
+                <Moon className="w-4 h-4 text-indigo-600" />
+                <h4 className="text-xs font-bold text-stone-900">
+                  Quiet Hours (Sleep Window)
+                </h4>
+              </div>
+              <p className="text-[11px] text-stone-500">
+                Silences all reminders during your rest hours so you can sleep peacefully without interruptions.
+              </p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer shrink-0">
               <input
                 type="checkbox"
-                checked={preferences.notifications.discreteWording}
+                checked={preferences.notifications.padCare?.quietHours?.enabled ?? true}
                 onChange={(e) =>
-                  handleNotificationToggle('discreteWording', e.target.checked)
+                  handlePadCareUpdate({
+                    quietHours: {
+                      enabled: e.target.checked,
+                      start: preferences.notifications.padCare?.quietHours?.start || '22:00',
+                      end: preferences.notifications.padCare?.quietHours?.end || '07:00',
+                    },
+                  })
                 }
-                className="w-5 h-5 accent-rose-600 rounded cursor-pointer"
+                className="sr-only peer"
               />
-            </div>
-            <p className="text-[11px] text-stone-500 leading-relaxed">
-              When turned ON, lock-screen notifications will read: <em>"NIVA: Time for your daily personal check-in"</em> rather than mentioning periods, cramps, or flow so private health details stay confidential.
-            </p>
+              <div className="w-11 h-6 bg-stone-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-stone-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+            </label>
           </div>
 
-          {/* Period reminder */}
+          {preferences.notifications.padCare?.quietHours?.enabled && (
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <div>
+                <label className="text-[11px] font-semibold text-stone-700 block mb-1">
+                  Quiet Starts (Evening)
+                </label>
+                <input
+                  type="time"
+                  value={preferences.notifications.padCare?.quietHours?.start || '22:00'}
+                  onChange={(e) =>
+                    handlePadCareUpdate({
+                      quietHours: {
+                        ...preferences.notifications.padCare.quietHours,
+                        start: e.target.value,
+                      },
+                    })
+                  }
+                  className="w-full px-3 py-2 rounded-xl border border-stone-200 bg-white text-stone-800 focus:outline-rose-500 text-xs font-semibold"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold text-stone-700 block mb-1">
+                  Quiet Ends (Morning)
+                </label>
+                <input
+                  type="time"
+                  value={preferences.notifications.padCare?.quietHours?.end || '07:00'}
+                  onChange={(e) =>
+                    handlePadCareUpdate({
+                      quietHours: {
+                        ...preferences.notifications.padCare.quietHours,
+                        end: e.target.value,
+                      },
+                    })
+                  }
+                  className="w-full px-3 py-2 rounded-xl border border-stone-200 bg-white text-stone-800 focus:outline-rose-500 text-xs font-semibold"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 4. OTHER NOTIFICATION TYPES */}
+        <div className="space-y-2 text-xs">
+          <h4 className="font-bold text-stone-800 text-xs uppercase tracking-wider px-1">
+            Notification Types & Reminders
+          </h4>
+
+          {/* Period Started Reminder */}
           <div className="flex items-center justify-between p-3.5 rounded-2xl bg-stone-50 border border-stone-200/70">
             <div className="space-y-0.5">
               <span className="font-semibold text-stone-800 block">
-                Estimated Period Reminder
+                Period Started Care Reminder
               </span>
               <span className="text-[11px] text-stone-500">
-                Notify 2 days before predicted start
+                Supportive prompt when period begins with comfort essentials & hydration check
               </span>
             </div>
             <input
@@ -436,14 +773,34 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             />
           </div>
 
-          {/* Daily symptom prompt */}
+          {/* Period Care Reminder */}
           <div className="flex items-center justify-between p-3.5 rounded-2xl bg-stone-50 border border-stone-200/70">
             <div className="space-y-0.5">
               <span className="font-semibold text-stone-800 block">
-                Daily Evening Wellness Check-in
+                Period Care & Comfort Reminder
               </span>
               <span className="text-[11px] text-stone-500">
-                Prompt to log mood, sleep, and physical comfort
+                Gentle reminders for hydration, fresh comfort, and heat soothing during flow days
+              </span>
+            </div>
+            <input
+              type="checkbox"
+              checked={preferences.notifications.wellnessCheckin}
+              onChange={(e) =>
+                handleNotificationToggle('wellnessCheckin', e.target.checked)
+              }
+              className="w-5 h-5 accent-rose-600 rounded cursor-pointer"
+            />
+          </div>
+
+          {/* Daily Period Check-in */}
+          <div className="flex items-center justify-between p-3.5 rounded-2xl bg-stone-50 border border-stone-200/70">
+            <div className="space-y-0.5">
+              <span className="font-semibold text-stone-800 block">
+                Daily Period Check-in
+              </span>
+              <span className="text-[11px] text-stone-500">
+                Gentle 5-second evening check asking how flow, mood, and energy felt today
               </span>
             </div>
             <input
@@ -456,14 +813,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             />
           </div>
 
-          {/* Hydration reminder */}
+          {/* Daytime Hydration Nudges */}
           <div className="flex items-center justify-between p-3.5 rounded-2xl bg-stone-50 border border-stone-200/70">
             <div className="space-y-0.5">
               <span className="font-semibold text-stone-800 block">
                 Daytime Hydration Nudges
               </span>
               <span className="text-[11px] text-stone-500">
-                Remind to drink water across your work day
+                Encourages drinking fluids across your day to ease muscle cramping
               </span>
             </div>
             <input
@@ -475,6 +832,31 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               className="w-5 h-5 accent-rose-600 rounded cursor-pointer"
             />
           </div>
+        </div>
+
+        {/* 5. NATIVE BROWSER NOTIFICATIONS PERMISSION */}
+        <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="space-y-0.5">
+            <span className="font-bold text-stone-800 block">
+              System & Browser Notification Permissions
+            </span>
+            <p className="text-[11px] text-stone-500">
+              Current Status:{' '}
+              <strong className="text-stone-700 capitalize">
+                {browserPermission}
+              </strong>
+              . Allows reminders even when NIVA is in another tab or minimized.
+            </p>
+          </div>
+
+          {browserPermission !== 'granted' && (
+            <button
+              onClick={handleRequestBrowserPermission}
+              className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs transition-colors shrink-0 shadow-xs"
+            >
+              Enable Browser Alerts
+            </button>
+          )}
         </div>
       </div>
 

@@ -11,6 +11,7 @@ import {
   ExternalLink,
   ShieldCheck,
   User,
+  Bell,
 } from 'lucide-react';
 import { NavigationTab, UserAccount, UserPreferences } from '../types';
 
@@ -24,6 +25,8 @@ interface HeaderProps {
   onOpenPrivacyCenter: () => void;
   onOpenLandingPage: () => void;
   onOpenAI: () => void;
+  onOpenNotifications?: () => void;
+  unreadNotificationsCount?: number;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -36,6 +39,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenPrivacyCenter,
   onOpenLandingPage,
   onOpenAI,
+  onOpenNotifications,
+  unreadNotificationsCount = 0,
 }) => {
   const toggleDiscreet = () => {
     onUpdatePreferences({ discreetMode: !preferences.discreetMode });
@@ -86,6 +91,21 @@ export const Header: React.FC<HeaderProps> = ({
               <Sparkles className="w-3.5 h-3.5 text-rose-500" />
               <span className="hidden sm:inline">Ask NIVA AI</span>
             </button>
+
+            {/* Notification Center button */}
+            {onOpenNotifications && (
+              <button
+                onClick={onOpenNotifications}
+                title="Pad Care & Cycle Reminders"
+                aria-label="Notification Center"
+                className="relative p-2 rounded-xl text-stone-600 hover:text-stone-900 hover:bg-stone-100 transition-colors"
+              >
+                <Bell className="w-4 h-4" />
+                {unreadNotificationsCount > 0 && (
+                  <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-rose-600 ring-2 ring-white animate-pulse" />
+                )}
+              </button>
+            )}
 
             {/* Education Hub quick button */}
             <button
